@@ -12,7 +12,7 @@ def generate_launch_description():
     config_dir = os.path.join(share_dir, 'config')
     xacro_path = os.path.join(config_dir, 'robot.urdf.xacro')
     list_params = []
-    for filee in ["robots/ground_truth_demo.yaml","elevation_maps/long_range.yaml","sensor_processors/RSLidar-32.yaml","postprocessing/postprocessor_pipeline.yaml"]:
+    for filee in ["robots/kiwi.yaml","elevation_maps/kiwi_map.yaml","postprocessing/postprocessor_pipeline.yaml"]:
         list_params.append(os.path.join(config_dir, filee))
         
     return launch.LaunchDescription(

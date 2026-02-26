@@ -374,6 +374,14 @@ bool ElevationMapping::initialize() {
  
 void ElevationMapping::pointCloudCallback(sensor_msgs::msg::PointCloud2::ConstSharedPtr pointCloudMsg, bool publishPointCloud,
                                           const SensorProcessorBase::Ptr& sensorProcessor_) {
+  if (!pointCloudMsg) {
+    RCLCPP_ERROR(nodeHandle_->get_logger(), "pointCloudCallback: received null point cloud message");
+    return;
+  }
+  if (!sensorProcessor_) {
+    RCLCPP_ERROR(nodeHandle_->get_logger(), "pointCloudCallback: sensorProcessor is null");
+    return;
+  }
   RCLCPP_INFO(nodeHandle_->get_logger(), "Processing data from: %s", pointCloudMsg->header.frame_id.c_str());
   if (!updatesEnabled_) {
     auto clock = nodeHandle_->get_clock();
@@ -409,6 +417,14 @@ void ElevationMapping::pointCloudCallback(sensor_msgs::msg::PointCloud2::ConstSh
 
   PointCloudType::Ptr pointCloud(new PointCloudType);
   pcl::fromPCLPointCloud2(pcl_pc, *pointCloud);
+
+  if (pointCloud->empty() || pointCloud->width == 0) {
+    RCLCPP_WARN_THROTTLE(
+        nodeHandle_->get_logger(), *nodeHandle_->get_clock(), 5,
+        "Received empty or invalid point cloud (width=0). Skipping. May occur when publisher restarts.");
+    return;
+  }
+
   lastPointCloudUpdateTime_ = rclcpp::Time(1000 * pointCloud->header.stamp, RCL_ROS_TIME);
 
   RCLCPP_DEBUG(nodeHandle_->get_logger(), "ElevationMap received a point cloud (%i points) for elevation mapping.", static_cast<int>(pointCloud->size()));
@@ -458,7 +474,18 @@ void ElevationMapping::pointCloudCallback(sensor_msgs::msg::PointCloud2::ConstSh
 
   // Update map from motion prediction.
   if (!updatePrediction(lastPointCloudUpdateTime_)) {
-    RCLCPP_ERROR(nodeHandle_->get_logger(), "Updating process noise failed.");
+    const double lastUpdate = map_.getTimeOfLastUpdate().seconds();
+    if (lastPointCloudUpdateTime_.seconds() < lastUpdate - 1.0) {
+      RCLCPP_WARN(nodeHandle_->get_logger(),
+                  "Point cloud timestamp (%.2f) is before last update (%.2f). "
+                  "Likely publisher restart/bag loop. Clearing map and reinitializing.",
+                  lastPointCloudUpdateTime_.seconds(), lastUpdate);
+      map_.clear();
+      initializeElevationMap();
+      receivedFirstMatchingPointcloudAndPose_ = false;
+    } else {
+      RCLCPP_ERROR(nodeHandle_->get_logger(), "Updating process noise failed.");
+    }
     // resetMapUpdateTimer();
     return;
   }

@@ -110,6 +110,15 @@ bool SensorProcessorBase::process(const PointCloudType::ConstPtr pointCloudInput
 
   // Specific filtering per sensor type
   filterPointCloudSensorType(pointCloudSensorFrame);
+
+  if (pointCloudSensorFrame->empty() || pointCloudSensorFrame->width == 0) {
+    static rclcpp::Clock clock;
+    RCLCPP_WARN_THROTTLE(rclcpp::get_logger("elevation_mapping"), clock, 5,
+                         "Point cloud empty or invalid (width=0) after filtering. Skipping. "
+                         "May occur when publisher restarts.");
+    return false;
+  }
+
   // Remove outside limits in map frame
   if (!transformPointCloud(pointCloudSensorFrame, pointCloudMapFrame, generalParameters_.mapFrameId_)) {
     return false;
@@ -164,6 +173,9 @@ bool SensorProcessorBase::updateTransformations(const rclcpp::Time& timeStamp) {
 
 bool SensorProcessorBase::transformPointCloud(PointCloudType::ConstPtr pointCloud, PointCloudType::Ptr pointCloudTransformed,
                                               const std::string& targetFrame) {
+  if (pointCloud->empty() || pointCloud->width == 0) {
+    return false;
+  }
   rclcpp::Time timeStamp = rclcpp::Time(1000 * pointCloud->header.stamp);  
   const std::string inputFrameId(pointCloud->header.frame_id);
 

@@ -1,0 +1,26 @@
+/**:
+  ros__parameters:
+    inputs: ['front_cam']
+    front_cam:
+      type: pointcloud
+      topic: /camera/depth/color/points
+      queue_size: 1
+      publish_on_update: true
+      sensor_processor:
+        type: structured_light
+        cutoff_min_depth: 0.2
+        cutoff_max_depth: 3.25
+        normal_factor_a: 0.000611
+        normal_factor_b: 0.003587
+        normal_factor_c: 0.3515
+        normal_factor_d: 0.0
+        normal_factor_e: 1.0
+        lateral_factor: 0.01576
+    map_frame_id: "odom"
+    robot_base_frame_id: "base_link"
+    robot_pose_with_covariance_topic: "/odometry/local"
+    robot_pose_cache_size: 200
+    track_point_frame_id: "base_link"
+    track_point_x: 0.0
+    track_point_y: 0.0
+    track_point_z: 0.0

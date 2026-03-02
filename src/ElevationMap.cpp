@@ -8,6 +8,7 @@
 
 #include <cmath>
 #include <cstring>
+#include <limits>
 
 #include <grid_map_msgs/msg/grid_map.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -542,7 +543,39 @@ bool ElevationMap::postprocessAndPublishRawElevationMap() {
     return false;
   }
   boost::recursive_mutex::scoped_lock scopedLock(rawMapMutex_);
-  grid_map::GridMap rawMapCopy = rawMap_; 
+  // Skip if map has no valid geometry (filters like Inpaint can crash on empty/zero-size maps)
+  const grid_map::Index mapSize = rawMap_.getSize();
+  if (mapSize(0) == 0 || mapSize(1) == 0) {
+    RCLCPP_DEBUG(nodeHandle_->get_logger(), "Skipping raw map postprocessing: map has zero size.");
+    return false;
+  }
+  // InpaintFilter (cv::inpaint) crashes on very small maps - require at least 3x3
+  if (mapSize(0) < 3 || mapSize(1) < 3) {
+    RCLCPP_DEBUG(nodeHandle_->get_logger(), "Skipping raw map postprocessing: map too small for inpaint.");
+    return false;
+  }
+  if (!rawMap_.exists("elevation")) {
+    RCLCPP_WARN_THROTTLE(nodeHandle_->get_logger(), *nodeHandle_->get_clock(), 5,
+                         "Skipping raw map postprocessing: elevation layer missing.");
+    return false;
+  }
+  // Debug: log map state before postprocessing (helps diagnose inpaint crashes)
+  const grid_map::Matrix& elev = rawMap_["elevation"];
+  const int totalCells = elev.size();
+  const int nanCount = (elev.array().isNaN()).count();
+  const int validCount = totalCells - nanCount;
+  double elevMin = std::numeric_limits<double>::quiet_NaN();
+  double elevMax = std::numeric_limits<double>::quiet_NaN();
+  if (validCount > 0) {
+    elevMin = elev.array().isNaN().select(std::numeric_limits<double>::infinity(), elev).minCoeff();
+    elevMax = elev.array().isNaN().select(-std::numeric_limits<double>::infinity(), elev).maxCoeff();
+  }
+  RCLCPP_INFO(nodeHandle_->get_logger(),
+              "[postprocess debug] size=%dx%d resolution=%.4f valid=%d/%d nan=%d elev_range=[%.2f,%.2f] frame=%s",
+              mapSize(0), mapSize(1), rawMap_.getResolution(), validCount, totalCells, nanCount,
+              elevMin, elevMax, rawMap_.getFrameId().c_str());
+
+  grid_map::GridMap rawMapCopy = rawMap_;
   scopedLock.unlock();
   return postprocessorPool_.runTask(rawMapCopy);
 }

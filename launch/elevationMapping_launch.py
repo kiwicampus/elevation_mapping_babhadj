@@ -23,6 +23,11 @@ def generate_launch_description():
                 name='elevation_mapping',
                 output='screen',
                 parameters=list_params,
+                # remappings=[
+                #     ("/tf", "/tf_elev"),
+                # ],
+                # GDB en foreground: si crashea, imprime backtrace y queda en el prompt
+                prefix="gdb -ex run -ex bt --args",
             ),
             #launch_ros.actions.Node(
             #package='robot_state_publisher',

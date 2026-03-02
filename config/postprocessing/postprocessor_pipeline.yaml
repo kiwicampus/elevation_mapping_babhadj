@@ -2,21 +2,21 @@ elevation_mapping:
   ros__parameters:
   
     postprocessor_pipeline: # set by postprocessor_pipeline_name
-      # Fill holes in the map with inpainting.
-      filter1:
-        name: inpaint
-        type: gridMapCv/InpaintFilter
-        params:
-          input_layer: elevation
-          output_layer: elevation_inpainted
-          radius: 0.05
+      # Inpaint disabled: OpenCV 4.5/4.6 conflict on robot causes SIGSEGV in cv::inpaint
+      # filter1:
+      #   name: inpaint
+      #   type: gridMapCv/InpaintFilter
+      #   params:
+      #     input_layer: elevation
+      #     output_layer: elevation_inpainted
+      #     radius: 0.05
 
-      # Compute Surface normals
+      # Compute Surface normals (uses elevation directly since inpaint is disabled)
       filter2:
         name: surface_normals
         type: gridMapFilters/NormalVectorsFilter
         params:
-          input_layer: elevation_inpainted
+          input_layer: elevation
           output_layers_prefix: normal_vectors_
           radius: 0.1
           normal_vector_positive_axis: z

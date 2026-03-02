@@ -15,59 +15,76 @@
 namespace elevation_mapping {
 
 PostprocessingPipelineFunctor::PostprocessingPipelineFunctor(std::shared_ptr<rclcpp::Node> nodeHandle)
-    : nodeHandle_(nodeHandle), filterChain_("grid_map::GridMap"), filterChainConfigured_(false) {
-  // TODO (magnus) Add logic when setting up failed. What happens actually if it is not configured?
-  if (!nodeHandle->has_parameter("filterChainParametersName_")){
-    nodeHandle_->declare_parameter("filterChainParametersName_", std::string("postprocessor_pipeline"));
-  }
- 
-  readParameters();
+    : nodeHandle_(nodeHandle), filterChain_("grid_map::GridMap"), filterChainConfigured_(false)
+{
+    // TODO (magnus) Add logic when setting up failed. What happens actually if it is not configured?
+    if (!nodeHandle->has_parameter("filterChainParametersName_"))
+    {
+        nodeHandle_->declare_parameter("filterChainParametersName_", std::string("postprocessor_pipeline"));
+    }
 
-  publisher_ = nodeHandle_->create_publisher<grid_map_msgs::msg::GridMap>(outputTopic_, 1);
+    readParameters();
 
-  // Setup filter chain.  
-  if (!nodeHandle->has_parameter("filterChainParametersName_") ||
-      !filterChain_.configure(filterChainParametersName_, nodeHandle_->get_node_logging_interface(), nodeHandle_->get_node_parameters_interface())) {
-    RCLCPP_WARN(nodeHandle_->get_logger(), "Could not configure the filter chain. Will publish the raw elevation map without postprocessing!");
-    return;
-  }
-  
-  filterChainConfigured_ = true;
+    publisher_ = nodeHandle_->create_publisher<grid_map_msgs::msg::GridMap>(outputTopic_, 1);
+
+    // Setup filter chain.
+    if (!nodeHandle->has_parameter("filterChainParametersName_") ||
+        !filterChain_.configure(filterChainParametersName_, nodeHandle_->get_node_logging_interface(),
+                                nodeHandle_->get_node_parameters_interface()))
+    {
+        RCLCPP_WARN(nodeHandle_->get_logger(),
+                    "Could not configure the filter chain. Will publish the raw elevation map without postprocessing!");
+        return;
+    }
+
+    filterChainConfigured_ = true;
 }
 
 PostprocessingPipelineFunctor::~PostprocessingPipelineFunctor() = default;
 
-void PostprocessingPipelineFunctor::readParameters() { 
-  nodeHandle_->get_parameter("output_topic", outputTopic_);
-  nodeHandle_->get_parameter("postprocessor_pipeline_name", filterChainParametersName_);
-  
-  }
-
-grid_map::GridMap PostprocessingPipelineFunctor::operator()(GridMap& inputMap) {
-  if (not filterChainConfigured_) {    
-    RCLCPP_WARN_ONCE(nodeHandle_->get_logger(), "No postprocessing pipeline was configured. Forwarding the raw elevation map!");
-    return inputMap;
-  }
-  RCLCPP_INFO(nodeHandle_->get_logger(), "performing Post processing");
-  grid_map::GridMap outputMap;
-  if (not filterChain_.update(inputMap, outputMap)) {
-    RCLCPP_ERROR(nodeHandle_->get_logger(), "Could not perform the grid map filter chain! Forwarding the raw elevation map!");
-    return inputMap;
-  }
-
-  return outputMap;
+void PostprocessingPipelineFunctor::readParameters()
+{
+    nodeHandle_->get_parameter("output_topic", outputTopic_);
+    nodeHandle_->get_parameter("postprocessor_pipeline_name", filterChainParametersName_);
 }
 
-void PostprocessingPipelineFunctor::publish(const GridMap& gridMap) const {
-  // Publish filtered output grid map.
-  std::unique_ptr<grid_map_msgs::msg::GridMap> outputMessage;
-  outputMessage = grid_map::GridMapRosConverter::toMessage(gridMap);
-  publisher_->publish(std::move(outputMessage));  
-  RCLCPP_DEBUG(nodeHandle_->get_logger(), "Elevation map raw has been published.");
+grid_map::GridMap PostprocessingPipelineFunctor::operator()(GridMap& inputMap)
+{
+    if (not filterChainConfigured_)
+    {
+        RCLCPP_WARN_ONCE(nodeHandle_->get_logger(),
+                         "No postprocessing pipeline was configured. Forwarding the raw elevation map!");
+        return inputMap;
+    }
+    // InpaintFilter (cv::inpaint) crashes on small/empty maps - skip postprocessing
+    const grid_map::Index size = inputMap.getSize();
+    if (size(0) < 3 || size(1) < 3 || !inputMap.exists("elevation"))
+    {
+        RCLCPP_DEBUG(nodeHandle_->get_logger(), "Skipping postprocessing: map too small or missing elevation layer.");
+        return inputMap;
+    }
+    RCLCPP_INFO(nodeHandle_->get_logger(), "[postprocess] About to run filter chain: size=%dx%d resolution=%.4f",
+                size(0), size(1), inputMap.getResolution());
+    grid_map::GridMap outputMap;
+    if (not filterChain_.update(inputMap, outputMap))
+    {
+        RCLCPP_ERROR(nodeHandle_->get_logger(),
+                     "Could not perform the grid map filter chain! Forwarding the raw elevation map!");
+        return inputMap;
+    }
+
+    return outputMap;
 }
 
-bool PostprocessingPipelineFunctor::hasSubscribers() const {
-  return publisher_->get_subscription_count() > 0;
+void PostprocessingPipelineFunctor::publish(const GridMap& gridMap) const
+{
+    // Publish filtered output grid map.
+    std::unique_ptr<grid_map_msgs::msg::GridMap> outputMessage;
+    outputMessage = grid_map::GridMapRosConverter::toMessage(gridMap);
+    publisher_->publish(std::move(outputMessage));
+    RCLCPP_DEBUG(nodeHandle_->get_logger(), "Elevation map raw has been published.");
 }
+
+bool PostprocessingPipelineFunctor::hasSubscribers() const { return publisher_->get_subscription_count() > 0; }
 
 }  // namespace elevation_mapping

@@ -16,8 +16,8 @@
         normal_factor_d: 0.0
         normal_factor_e: 1.0
         lateral_factor: 0.01576
-    map_frame_id: "odom_elev"
-    robot_base_frame_id: "base_link"
+    map_frame_id: "odom"
+    robot_base_frame_id: "inertial_link"
     robot_pose_with_covariance_topic: "/odometry/elevation"
     robot_pose_cache_size: 200
     track_point_frame_id: "base_link"

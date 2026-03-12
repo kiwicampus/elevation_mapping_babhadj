@@ -8,35 +8,37 @@ from ament_index_python.packages import get_package_share_directory
 
 def generate_launch_description():
 
-    share_dir = get_package_share_directory('elevation_mapping')
-    config_dir = os.path.join(share_dir, 'config')
-    xacro_path = os.path.join(config_dir, 'robot.urdf.xacro')
+    share_dir = get_package_share_directory("elevation_mapping")
+    config_dir = os.path.join(share_dir, "config")
+    xacro_path = os.path.join(config_dir, "robot.urdf.xacro")
     list_params = []
-    for filee in ["robots/kiwi.yaml","elevation_maps/kiwi_map.yaml","postprocessing/postprocessor_pipeline.yaml"]:
+    for filee in [
+        "robots/kiwi.yaml",
+        "elevation_maps/kiwi_map.yaml",
+        "postprocessing/postprocessor_pipeline.yaml",
+    ]:
         list_params.append(os.path.join(config_dir, filee))
-        
+
     return launch.LaunchDescription(
         [
             launch_ros.actions.Node(
-                package='elevation_mapping',
-                executable='elevation_mapping',
-                name='elevation_mapping',
-                output='screen',
+                package="elevation_mapping",
+                executable="elevation_mapping",
+                name="elevation_mapping",
+                output="screen",
                 parameters=list_params,
-                # remappings=[
-                #     ("/tf", "/tf_elev"),
-                # ],
-                # GDB en foreground: si crashea, imprime backtrace y queda en el prompt
-                prefix="gdb -ex run -ex bt --args",
+                remappings=[
+                    ("/tf", "/tf_elev"),
+                ],
             ),
-            #launch_ros.actions.Node(
-            #package='robot_state_publisher',
-            #executable='robot_state_publisher',
-            #name='robot_state_publisher',
-            #output='screen',
-            #parameters=[{
+            # launch_ros.actions.Node(
+            # package='robot_state_publisher',
+            # executable='robot_state_publisher',
+            # name='robot_state_publisher',
+            # output='screen',
+            # parameters=[{
             #    'robot_description': launch.substitutions.Command(['xacro', ' ', xacro_path])
-            #}]
-        #)
+            # }]
+            # )
         ]
     )

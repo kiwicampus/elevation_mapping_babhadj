@@ -18,9 +18,9 @@
     resolution: 0.1
     min_variance: 0.0001
     max_variance: 0.05
-    mahalanobis_distance_threshold: 2.5
+    mahalanobis_distance_threshold: 1.5
     multi_height_noise: 0.001
     fused_map_publishing_rate: 0.0
-    enable_visibility_cleanup: false
+    enable_visibility_cleanup: true
     visibility_cleanup_rate: 1.0
     scanning_duration: 0.1

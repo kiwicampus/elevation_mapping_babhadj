@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Circular Cancellation — For Dummies</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', sans-serif; background: #0d1117; color: #c9d1d9; padding: 32px; max-width: 900px; margin: 0 auto; }
+  h1 { color: #58a6ff; font-size: 1.4rem; margin-bottom: 6px; }
+  .subtitle { color: #8b949e; font-size: 0.82rem; margin-bottom: 32px; }
+
+  .step { background: #161b22; border: 1px solid #30363d; border-radius: 10px; padding: 20px 24px; margin-bottom: 16px; }
+  .step-num { display: inline-block; background: #1f3a5f; color: #79c0ff; border-radius: 50%; width: 28px; height: 28px; text-align: center; line-height: 28px; font-weight: bold; font-size: 0.85rem; margin-right: 10px; flex-shrink: 0; }
+  .step-title { font-weight: bold; font-size: 0.95rem; color: #c9d1d9; display: flex; align-items: center; margin-bottom: 12px; }
+  .step-body { font-size: 0.82rem; line-height: 1.8; color: #8b949e; }
+
+  .math { background: #0d1117; border: 1px solid #21262d; border-radius: 6px; padding: 12px 16px; margin: 10px 0; font-family: monospace; font-size: 0.82rem; line-height: 2; }
+  .var-theta { color: #79c0ff; font-weight: bold; }   /* θ — real robot pitch */
+  .var-alpha { color: #e3b341; font-weight: bold; }   /* α — static camera mount angle */
+  .var-sum   { color: #bc8cff; font-weight: bold; }   /* θ+α — what madgwick sees */
+  .var-zero  { color: #f85149; font-weight: bold; }   /* 0 — result of cancellation */
+  .var-ok    { color: #3fb950; font-weight: bold; }   /* correct result */
+
+  .arrow { color: #388bfd; }
+  .comment { color: #484f58; font-style: italic; }
+
+  .analogy { background: #1f3a1f; border: 1px solid #3fb95066; border-radius: 8px; padding: 14px 18px; margin: 10px 0; font-size: 0.82rem; line-height: 1.7; }
+  .analogy-title { color: #3fb950; font-weight: bold; margin-bottom: 6px; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; }
+
+  .result-box { background: #2d1217; border: 1px solid #f8514966; border-radius: 8px; padding: 14px 18px; margin: 10px 0; font-size: 0.82rem; line-height: 1.7; }
+  .result-box-ok { background: #122d1a; border: 1px solid #3fb95066; border-radius: 8px; padding: 14px 18px; margin: 10px 0; font-size: 0.82rem; line-height: 1.7; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 12px 16px; margin-bottom: 24px; font-size: 0.78rem; }
+  .leg { display: flex; align-items: center; gap: 6px; }
+  .ld { font-family: monospace; font-weight: bold; font-size: 1rem; }
+
+  hr { border: none; border-top: 1px solid #30363d; margin: 24px 0; }
+  h2 { color: #58a6ff; font-size: 1rem; margin-bottom: 16px; }
+  code { background: #21262d; padding: 1px 5px; border-radius: 3px; font-size: 0.8rem; }
+</style>
+</head>
+<body>
+
+<h1>Why does pitch cancel to zero?</h1>
+<p class="subtitle">Circular cancellation explained with simple angle math (no quaternion algebra needed)</p>
+
+<div class="legend">
+  <div class="leg"><span class="ld var-theta">θ</span> = real robot pitch (what we want to measure)</div>
+  <div class="leg"><span class="ld var-alpha">α</span> = camera mount angle on robot (fixed, known from /tf_static)</div>
+  <div class="leg"><span class="ld var-sum">θ+α</span> = camera tilt in world (what Madgwick outputs)</div>
+  <div class="leg"><span class="ld var-zero">0</span> = result of cancellation (bad!)</div>
+</div>
+
+<!-- ── Step 0: Setup ── -->
+<div class="step">
+  <div class="step-title"><span class="step-num">0</span>Setup — what angles are involved</div>
+  <div class="step-body">
+    Imagine the robot is going <strong>uphill at 10°</strong>. The camera is bolted to the robot tilted <strong>20° forward</strong> (mount angle).
+    <div class="math">
+      Robot pitch in world &nbsp;&nbsp;&nbsp;= <span class="var-theta">θ = 10°</span> &nbsp;&nbsp;<span class="comment">← what EKF should estimate</span><br>
+      Camera mount on robot &nbsp;= <span class="var-alpha">α = 20°</span> &nbsp;&nbsp;<span class="comment">← fixed, from /tf_static in bag</span><br>
+      Camera tilt in world &nbsp;&nbsp;= <span class="var-sum">θ+α = 30°</span> <span class="comment">← camera sees 30° from horizon</span>
+    </div>
+  </div>
+</div>
+
+<!-- ── Step 1: Madgwick ── -->
+<div class="step">
+  <div class="step-title"><span class="step-num">1</span>Madgwick filter output</div>
+  <div class="step-body">
+    Madgwick fuses gyro + accel from the D435i. The IMU is <em>inside the camera</em>, so it measures the camera's tilt in the world.
+    <div class="math">
+      <code>/camera/imu_filtered</code> orientation = <span class="var-sum">θ+α = 30°</span>
+      <span class="comment"> ← camera is 30° from horizon</span>
+    </div>
+    Madgwick doesn't know about the robot. It only knows how much the camera is tilted.
+  </div>
+</div>
+
+<!-- ── Step 2: broadcaster ── -->
+<div class="step">
+  <div class="step-title"><span class="step-num">2</span>inertial_link_broadcaster (orientation_2d := false)</div>
+  <div class="step-body">
+    The broadcaster's job: figure out robot pitch from the camera's orientation.
+    It looks up the static TF (<span class="var-alpha">α</span>) and subtracts it:
+    <div class="math">
+      robot_pitch = camera_tilt_in_world − camera_mount_angle<br>
+      &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;= <span class="var-sum">(θ+α)</span> − <span class="var-alpha">α</span><br>
+      &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;= <span class="var-theta">θ = 10°</span> &nbsp;&nbsp;<span class="comment">← correct!</span>
+    </div>
+    Then it broadcasts: <code>base_link → inertial_link</code> with pitch = <span class="var-theta" style="font-size:0.9rem">θ</span>
+    <div class="math">
+      TF: base_link <span class="arrow">→</span> inertial_link = pitch <span class="var-theta">θ = 10°</span>
+    </div>
+    So far so good. The TF tree now encodes the real robot pitch.
+  </div>
+</div>
+
+<!-- ── Step 3: EKF transform ── -->
+<div class="step">
+  <div class="step-title"><span class="step-num">3</span>EKF needs to use the IMU data — it must rotate it into base_link frame</div>
+  <div class="step-body">
+    The EKF receives <code>/camera/imu_filtered</code>. This message's <code>frame_id</code> is the camera gyro frame.
+    Before the EKF can fuse it, it must transform the orientation into <code>base_link</code> frame.
+    <br><br>
+    It does this by looking up the TF chain:
+    <div class="math">
+      base_link <span class="arrow">→</span> inertial_link <span class="arrow">→</span> camera_link <span class="arrow">→</span> gyro_frame<br><br>
+      Total rotation = <span class="var-theta">θ (from broadcaster)</span> + <span class="var-alpha">α (static mount)</span> = <span class="var-sum">θ+α = 30°</span>
+    </div>
+    The EKF now applies this rotation to "undo" the sensor frame, expressing the IMU orientation in base_link:
+    <div class="math">
+      orientation_in_base_link = IMU_measurement − TF_rotation<br>
+      &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;= <span class="var-sum">(θ+α)</span> − <span class="var-sum">(θ+α)</span><br>
+      &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;= <span class="var-zero">0°</span>
+    </div>
+    <div class="result-box">
+      <strong style="color:#f85149">The EKF thinks the robot is perfectly flat.</strong><br>
+      No matter how steep the slope, it always sees 0° pitch — because the measurement and the transform were built from the <em>same signal</em>.
+    </div>
+  </div>
+</div>
+
+<!-- ── Analogy ── -->
+<div class="step">
+  <div class="step-title"><span class="step-num">💡</span>Everyday analogy</div>
+  <div class="step-body">
+    <div class="analogy">
+      <div class="analogy-title">The shadow that follows you</div>
+      Imagine you want to measure how tall you are by looking at your shadow on the ground.<br>
+      But every time you move, your shadow moves with you — always the same length relative to you.<br>
+      No matter how you tilt, your shadow always looks the same. You'd always think you're the same height.<br><br>
+      <strong style="color:#3fb950">The shadow (inertial_link pitch) was derived from you (IMU signal) — so comparing them tells you nothing.</strong>
+    </div>
+    <div class="analogy">
+      <div class="analogy-title">The thermometer in a fridge you're trying to cool</div>
+      You measure the fridge temperature. You cool it based on that reading.<br>
+      But the thermometer is <em>inside the cooling element</em> — it always reads "cold" regardless of the actual fridge interior.<br><br>
+      <strong style="color:#3fb950">The sensor is part of the feedback loop it's trying to measure.</strong>
+    </div>
+  </div>
+</div>
+
+<hr>
+<h2>Why orientation_2d := true fixes Z</h2>
+
+<div class="step">
+  <div class="step-title"><span class="step-num">A</span>With orientation_2d := true</div>
+  <div class="step-body">
+    The broadcaster ignores the IMU signal and always publishes a flat transform:
+    <div class="math">
+      TF: base_link <span class="arrow">→</span> inertial_link = pitch <span class="var-zero">0°</span> &nbsp;&nbsp;<span class="comment">← identity, always</span>
+    </div>
+    Now the EKF looks up the TF chain for the IMU:
+    <div class="math">
+      base_link <span class="arrow">→</span> inertial_link <span class="arrow">→</span> camera_link <span class="arrow">→</span> gyro_frame<br><br>
+      Total rotation = <span class="var-zero">0°</span> + <span class="var-alpha">α = 20°</span> = <span class="var-alpha">α = 20°</span> &nbsp;&nbsp;<span class="comment">← just the static mount</span>
+    </div>
+    EKF transforms IMU into base_link:
+    <div class="math">
+      orientation_in_base_link = IMU_measurement − TF_rotation<br>
+      &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;= <span class="var-sum">(θ+α)</span> − <span class="var-alpha">α</span><br>
+      &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;= <span class="var-theta">θ = 10°</span>
+    </div>
+    <div class="result-box-ok">
+      <strong style="color:#3fb950">EKF sees the real robot pitch → estimates Z correctly.</strong><br>
+      The TF rotation is now constant (α only), so it doesn't cancel the measurement.
+    </div>
+    <strong>But:</strong> the EKF's output pitch has <code>smooth_lagged_data</code> delay.
+    When projecting the point cloud, the tilted base_link from the EKF is delayed → edge artifacts.
+  </div>
+</div>
+
+<hr>
+<h2>Why the robot IMU (/imu/data) solves both</h2>
+
+<div class="step">
+  <div class="step-title"><span class="step-num">B</span>EKF uses /imu/data (direct chain, not through inertial_link)</div>
+  <div class="step-body">
+    If the robot's own IMU (<code>/imu/data</code>) connects to base_link via a direct static TF:
+    <div class="math">
+      base_link <span class="arrow">→</span> imu_link &nbsp;&nbsp;<span class="comment">← pure static TF, does NOT pass through inertial_link</span>
+    </div>
+    EKF transform for <code>/imu/data</code>:
+    <div class="math">
+      Total rotation = <span class="var-alpha">β (imu_link mount, fixed)</span> &nbsp;&nbsp;<span class="comment">← constant, no circular path</span>
+    </div>
+    EKF sees:
+    <div class="math">
+      orientation_in_base_link = IMU_measurement − β = <span class="var-theta">θ</span> &nbsp;&nbsp;<span class="comment">← real pitch!</span>
+    </div>
+    Meanwhile, <code>inertial_link_broadcaster</code> still runs with <code>orientation_2d:=false</code> using D435i:
+    <div class="math">
+      base_link <span class="arrow">→</span> inertial_link = <span class="var-theta">θ</span> &nbsp;&nbsp;<span class="comment">← real, responsive, no lag</span>
+    </div>
+    Point cloud projection:
+    <div class="math">
+      depth_frame <span class="arrow">→</span> inertial_link (<span class="var-theta">real θ, instant</span>) <span class="arrow">→</span> base_link <span class="arrow">→</span> odom
+    </div>
+    <div class="result-box-ok">
+      <strong style="color:#3fb950">Both problems solved:</strong><br>
+      ✓ Z correct — EKF uses robot IMU via direct static chain (no cancellation)<br>
+      ✓ Sharp map edges — D435i pitch in inertial_link is real-time (no EKF delay)
+    </div>
+    <strong>Prerequisite:</strong> check that <code>/imu/data</code> frame_id has a direct <code>base_link → imu_link</code> static TF in the bag, <em>not routed through inertial_link</em>.
+    <div class="math">
+      ros2 topic echo /imu/data --once | grep frame_id<br>
+      ros2 run tf2_tools view_frames &nbsp;<span class="comment"># open frames.pdf to inspect the tree</span>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

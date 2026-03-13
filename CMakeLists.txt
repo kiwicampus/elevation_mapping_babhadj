@@ -166,6 +166,16 @@ install(TARGETS
   DESTINATION lib/${PROJECT_NAME}
 )
 
+install(PROGRAMS
+  launch/tf_odom_filter.py
+  launch/camera_imu_combiner.py
+  launch/inertial_link_broadcaster.py
+  launch/hybrid_odom_publisher.py
+  launch/static_frame_aliaser.py
+  launch/pointcloud_frame_relay.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 # install(
 #   DIRECTORY 
 #     include/${PROJECT_NAME}/

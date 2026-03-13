@@ -417,6 +417,127 @@ This is the main Robot-Centric Elevation Mapping node. It uses the distance sens
 
     The data for the sensor noise model.
 
+---
+
+## 3D Pose Estimation for Elevation Mapping (Kiwi)
+
+### Problem
+
+The wheel-odometry EKF publishes `odom→base_link` with Z=0 and no roll/pitch.
+On slopes or potholes the camera position in the odom frame is wrong, causing
+ghost cells and height smearing in the elevation map.
+
+Nav2 costmap plugins (VoxelLayer, STVL, etc.) use global-frame height thresholds
+and cannot handle a `base_link` that moves in Z — so we cannot make `base_link` 3D.
+
+### Solution: parallel `base_link_3d` frame
+
+A second TF subtree is published on the standard `/tf`/`/tf_static` topics
+(so RViz and Foxglove see it without any changes). Elevation mapping uses
+`base_link_3d` exclusively; Nav2 keeps the original 2D `base_link`.
+
+```
+/tf
+  odom ──────────────────► base_link          X,Y,yaw only      (Nav2, unchanged)
+  odom ──────────────────► base_link_3d       X,Y,Z,yaw @ 50 Hz (elevation mapping)
+  base_link ─────────────► inertial_link      roll,pitch @ IMU rate  (existing)
+  base_link_3d ──────────► inertial_link_3d   same roll,pitch        (new, same node)
+
+/tf_static
+  inertial_link ─► ... ─► camera_depth_optical_frame        (from realsense driver/bag)
+  inertial_link_3d ──────► camera_depth_optical_frame_3d    (aliased at runtime)
+```
+
+TF chain used by elevation_mapping for each point cloud scan:
+```
+camera_depth_optical_frame_3d
+  → inertial_link_3d        (composed static, aliased from driver calibration)
+  → base_link_3d            (Madgwick roll/pitch at IMU rate)
+  → odom                    (X,Y,Z,yaw at 50 Hz from hybrid publisher)
+```
+
+### New nodes
+
+| Node | File | Purpose |
+|---|---|---|
+| `hybrid_odom_publisher` | `launch/hybrid_odom_publisher.py` | Reads odom→base_link (2D) + EKF Z, broadcasts odom→base_link_3d at 50 Hz |
+| `inertial_link_broadcaster` | `launch/inertial_link_broadcaster.py` | Broadcasts base_link→inertial_link and base_link_3d→inertial_link_3d with Madgwick roll/pitch |
+| `pointcloud_frame_relay` | `launch/pointcloud_frame_relay.py` | Copies depth cloud, changes frame_id to `camera_depth_optical_frame_3d` |
+| `static_frame_aliaser` | `launch/static_frame_aliaser.py` | One-shot: reads composed inertial_link→camera_depth_optical_frame from /tf_static, republishes as the _3d alias |
+| `ekf_filter_elevation` | robot_localization ekf_node | Estimates Z from wheel odom vz + camera IMU; `publish_tf: false` |
+
+#### Does `inertial_link_broadcaster` affect the 2D Nav2 pipeline?
+
+No. `inertial_link_broadcaster` publishes **both** `base_link→inertial_link` (existing) and
+`base_link_3d→inertial_link_3d` (new alias). This might look like it modifies the 2D pipeline,
+but Nav2 and the wheel-odometry EKF only ever look at `odom→base_link` — they never traverse
+the `inertial_link` subtree. The `base_link→inertial_link` transform is required to keep the
+TF tree connected (the realsense static frames hang off `inertial_link`), and is also needed by
+`static_frame_aliaser` to compose the `inertial_link→camera_depth_optical_frame` lookup.
+
+The `orientation_2d` parameter controls whether roll/pitch are zeroed:
+- `orientation_2d:=false` — real roll/pitch from Madgwick (correct for 3D elevation mapping)
+- `orientation_2d:=true` — debug mode: forces identity tilt, camera appears always flat
+
+#### Does `ekf_filter_elevation` risk publishing Z to `odom→base_link`?
+
+No. `publish_tf: false` means this EKF node **never writes to `/tf`**. Its only output is the
+`/odometry/elevation` topic. The `base_link_frame: base_link` entry in `localization_params.yaml`
+is used internally by robot_localization to transform incoming sensor measurements (body-frame
+velocities) into the correct reference frame for the EKF math — it has no effect on what
+gets published. The original `odom→base_link` (Z=0, 2D) from the wheel-odometry EKF is
+completely untouched.
+
+### Launch files
+
+**Rosbag (offline testing):**
+```bash
+# Kill stale processes first:
+pkill -f "hybrid_odom_publisher|ekf_filter_elevation|inertial_link_broadcaster|pointcloud_frame_relay|static_frame_aliaser"
+
+ros2 launch elevation_mapping elevation_mapping_bag.launch.py \
+    bag_path:=/workspace/localization_offline
+
+# With separate gyro/accel topics in the bag:
+ros2 launch elevation_mapping elevation_mapping_bag.launch.py \
+    bag_path:=/workspace/localization_off_imu_filter_mor_separated \
+    separate_camera_imu:=true
+```
+
+**Real robot (live):**
+```bash
+ros2 launch elevation_mapping elevation_mapping_robot.launch.py
+
+# With separate gyro/accel topics from the camera driver:
+ros2 launch elevation_mapping elevation_mapping_robot.launch.py \
+    separate_camera_imu:=true
+```
+
+| | `elevation_mapping_bag.launch.py` | `elevation_mapping_robot.launch.py` |
+|---|---|---|
+| `use_sim_time` | `true` | `false` |
+| Rosbag player | yes | no |
+| `tf_odom_filter` | yes (drops bag's inertial_link) | no |
+| `static_frame_aliaser` delay | 2 s (sim time must advance) | none (polls internally) |
+| elevation_mapping delay | 2 s | 2 s |
+
+### Verification
+
+```bash
+# Both subtrees visible:
+ros2 run tf2_ros tf2_echo odom base_link_3d   # non-zero Z on slopes
+ros2 run tf2_ros tf2_echo odom base_link      # always Z=0
+
+# Relay working:
+ros2 topic echo /camera/depth/color/points_3d --once | grep frame_id
+# → camera_depth_optical_frame_3d
+
+# elevation_mapping subscribed to correct topic (check startup log):
+# [elevation_mapping] Configured pointcloud:front_cam @ /camera/depth/color/points_3d
+```
+
+---
+
 ## Changelog
 
 See [Changelog]

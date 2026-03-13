@@ -53,6 +53,12 @@ class InertialLinkBroadcaster(Node):
         # Useful for debugging: if Z estimation improves with this flag, the issue
         # is in the dynamic TF lookup/extrapolation, not in the orientation math.
         self.declare_parameter("orientation_2d", False)
+        # When True, also broadcast base_frame_3d -> inertial_frame_3d with the same
+        # roll/pitch quaternion. This populates the 3D alias subtree so that
+        # elevation_mapping can look up camera orientation through base_link_3d.
+        self.declare_parameter("also_publish_3d_alias", False)
+        self.declare_parameter("base_frame_3d", "base_link_3d")
+        self.declare_parameter("inertial_frame_3d", "inertial_link_3d")
 
         imu_topic = self.get_parameter("imu_topic").value
         self._base_frame = self.get_parameter("base_frame").value
@@ -60,6 +66,9 @@ class InertialLinkBroadcaster(Node):
         self._tf_source_frame = self.get_parameter("tf_source_frame").value
         self._tf_fallback_frame = self.get_parameter("tf_fallback_frame").value
         self._orientation_2d = self.get_parameter("orientation_2d").value
+        self._also_publish_3d_alias = self.get_parameter("also_publish_3d_alias").value
+        self._base_frame_3d = self.get_parameter("base_frame_3d").value
+        self._inertial_frame_3d = self.get_parameter("inertial_frame_3d").value
 
         self._tf_buffer = tf2_ros.Buffer()
         self._tf_listener = tf2_ros.TransformListener(self._tf_buffer, self)
@@ -143,8 +152,12 @@ class InertialLinkBroadcaster(Node):
             throttle_duration_sec=1.0,
         )
 
-        # Broadcast base_link -> inertial_link: gravity-aligned, no yaw
+        # Broadcast base_link -> inertial_link: gravity-aligned, no yaw.
+        # Normalize sign so w >= 0 — prevents the q / -q ambiguity that causes
+        # a 360° visual flip in RViz when scipy flips the quaternion convention.
         q_no_yaw = Rotation.from_euler("xyz", [roll, pitch, 0.0]).as_quat()
+        if q_no_yaw[3] < 0:
+            q_no_yaw = -q_no_yaw
 
         ts = TransformStamped()
         ts.header.stamp = msg.header.stamp
@@ -154,7 +167,20 @@ class InertialLinkBroadcaster(Node):
         ts.transform.rotation.y = q_no_yaw[1]
         ts.transform.rotation.z = q_no_yaw[2]
         ts.transform.rotation.w = q_no_yaw[3]
-        self._broadcaster.sendTransform(ts)
+
+        if self._also_publish_3d_alias:
+            # Publish the identical rotation for the 3D alias subtree.
+            # base_link_3d -> inertial_link_3d carries the same roll/pitch so that
+            # elevation_mapping's TF lookup through base_link_3d gets correct
+            # camera orientation at Madgwick IMU rate.
+            ts2 = TransformStamped()
+            ts2.header.stamp = msg.header.stamp
+            ts2.header.frame_id = self._base_frame_3d
+            ts2.child_frame_id = self._inertial_frame_3d
+            ts2.transform.rotation = ts.transform.rotation
+            self._broadcaster.sendTransform([ts, ts2])
+        else:
+            self._broadcaster.sendTransform(ts)
 
 
 def main():

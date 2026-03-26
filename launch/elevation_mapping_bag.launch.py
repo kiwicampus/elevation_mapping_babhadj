@@ -170,18 +170,18 @@ def generate_launch_description():
             # Broadcasts base_link->inertial_link (roll/pitch from Madgwick, yaw=0).
             # Also broadcasts base_link_3d->inertial_link_3d with identical rotation,
             # so elevation_mapping gets IMU-rate roll/pitch corrections via base_link_3d.
-            ExecuteProcess(
-                cmd=[
-                    "python3",
-                    os.path.join(launch_dir, "inertial_link_broadcaster.py"),
-                    "--ros-args",
-                    "-p", "use_sim_time:=true",
-                    "-p", "orientation_2d:=false",
-                    "-p", "also_publish_3d_alias:=true",
-                    "-p", "base_frame_3d:=base_link_3d",
-                    "-p", "inertial_frame_3d:=inertial_link_3d",
-                ],
+            Node(
+                package="elevation_mapping",
+                executable="inertial_link_broadcaster",
+                name="inertial_link_broadcaster",
                 output="screen",
+                parameters=[{
+                    "use_sim_time": True,
+                    "orientation_2d": False,
+                    "also_publish_3d_alias": True,
+                    "base_frame_3d": "base_link_3d",
+                    "inertial_frame_3d": "inertial_link_3d",
+                }],
             ),
 
             # ── 3D EKF ──
@@ -203,7 +203,7 @@ def generate_launch_description():
             # Roll/pitch come from inertial_link_broadcaster, not from this transform.
             Node(
                 package="elevation_mapping",
-                executable="hybrid_odom_publisher.py",
+                executable="hybrid_odom_publisher",
                 name="hybrid_odom_publisher",
                 output="screen",
                 parameters=[
@@ -241,7 +241,7 @@ def generate_launch_description():
                 actions=[
                     Node(
                         package="elevation_mapping",
-                        executable="static_frame_aliaser.py",
+                        executable="static_frame_aliaser",
                         name="static_frame_aliaser",
                         output="screen",
                         parameters=[

@@ -32,6 +32,7 @@ find_package(tf2_ros REQUIRED)
 find_package(tf2_eigen REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
+find_package(nav_msgs REQUIRED)
 
 find_package(Boost REQUIRED COMPONENTS system thread)
 find_package(Eigen3 REQUIRED)
@@ -55,6 +56,7 @@ set(DEPENDENCIES
   tf2_eigen
   tf2_geometry_msgs
   geometry_msgs
+  nav_msgs
   # Threads
 )
 
@@ -134,6 +136,21 @@ add_executable(listener
   src/test.cpp
 )
 
+add_executable(inertial_link_broadcaster
+  src/inertial_link_broadcaster_node.cpp
+)
+ament_target_dependencies(inertial_link_broadcaster ${DEPENDENCIES})
+
+add_executable(hybrid_odom_publisher
+  src/hybrid_odom_publisher_node.cpp
+)
+ament_target_dependencies(hybrid_odom_publisher ${DEPENDENCIES})
+
+add_executable(static_frame_aliaser
+  src/static_frame_aliaser_node.cpp
+)
+ament_target_dependencies(static_frame_aliaser ${DEPENDENCIES})
+
 ament_target_dependencies(${PROJECT_NAME}
   ${DEPENDENCIES}
 )
@@ -163,6 +180,9 @@ install(TARGETS
 install(TARGETS
   ${PROJECT_NAME}
   listener
+  inertial_link_broadcaster
+  hybrid_odom_publisher
+  static_frame_aliaser
   DESTINATION lib/${PROJECT_NAME}
 )
 

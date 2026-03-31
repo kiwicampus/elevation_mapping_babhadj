@@ -151,6 +151,11 @@ add_executable(static_frame_aliaser
 )
 ament_target_dependencies(static_frame_aliaser ${DEPENDENCIES})
 
+add_executable(camera_imu_combiner
+  src/camera_imu_combiner_node.cpp
+)
+ament_target_dependencies(camera_imu_combiner ${DEPENDENCIES})
+
 ament_target_dependencies(${PROJECT_NAME}
   ${DEPENDENCIES}
 )
@@ -183,6 +188,7 @@ install(TARGETS
   inertial_link_broadcaster
   hybrid_odom_publisher
   static_frame_aliaser
+  camera_imu_combiner
   DESTINATION lib/${PROJECT_NAME}
 )
 

@@ -94,8 +94,7 @@ def generate_launch_description():
                     "--rate", play_rate,
                     "--qos-profile-overrides-path",
                     "/workspace/rover/ros2/src/navigation/config/tf_static_override.yaml",
-                    "--remap", "/tf:=/tf_bag",
-                    "--remap", "/tf_static:=/tf_static_bag",
+                    "--remap", "/tf:=/tf_bag", "/tf_static:=/tf_static_bag",
                 ],
                 output="screen",
             ),
@@ -112,13 +111,12 @@ def generate_launch_description():
             ),
 
             # ── D435i IMU combiner (only when bag has separate gyro/accel topics) ──
-            ExecuteProcess(
-                cmd=[
-                    "python3",
-                    os.path.join(launch_dir, "camera_imu_combiner.py"),
-                    "--ros-args", "-p", "use_sim_time:=true",
-                ],
+            Node(
+                package="elevation_mapping",
+                executable="camera_imu_combiner",
+                name="camera_imu_combiner",
                 output="screen",
+                parameters=[{"use_sim_time": True}],
                 condition=IfCondition(use_combiner),
             ),
 

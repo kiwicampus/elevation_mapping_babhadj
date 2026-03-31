@@ -67,13 +67,12 @@ def generate_launch_description():
             ),
 
             # ── D435i IMU combiner (only when driver has separate topics) ──
-            ExecuteProcess(
-                cmd=[
-                    "python3",
-                    os.path.join(launch_dir, "camera_imu_combiner.py"),
-                    "--ros-args", "-p", "use_sim_time:=false",
-                ],
+            Node(
+                package="elevation_mapping",
+                executable="camera_imu_combiner",
+                name="camera_imu_combiner",
                 output="screen",
+                parameters=[{"use_sim_time": False}],
                 condition=IfCondition(use_combiner),
             ),
 

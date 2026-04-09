@@ -7,6 +7,15 @@
  * Optionally also broadcasts base_link_3d -> inertial_link_3d with the same
  * roll/pitch so that elevation_mapping can traverse the 3D alias subtree.
  *
+ * The 2D and 3D broadcasts are controlled independently. This matters because
+ * robot_localization transforms IMU orientation into base_link before fusing
+ * it; if base_link -> inertial_link already contains the same dynamic tilt
+ * from that IMU, the transform can partially cancel the very pitch/roll that
+ * the elevation EKF needs for Z estimation. The 3D elevation-mapping pipeline
+ * therefore keeps the original base_link subtree connected with a flat
+ * base_link -> inertial_link transform, while publishing the real dynamic
+ * roll/pitch only on the *_3d alias subtree.
+ *
  * Improvements over the Python version:
  *  - Eigen quaternion math instead of scipy (no Python interpreter overhead)
  *  - publish_rate parameter (default 50 Hz) throttles the IMU callback so we
@@ -44,6 +53,11 @@ public:
     declare_parameter("tf_fallback_frame", "camera_color_optical_frame");
     // When true, broadcast base_link -> inertial_link as identity (roll=0, pitch=0).
     declare_parameter("orientation_2d", false);
+    // When false, do not publish base_frame -> inertial_frame.
+    declare_parameter("publish_2d_transform", true);
+    // When true, publish the 2D tree as flat/identity even if the 3D alias
+    // subtree is receiving the real dynamic roll/pitch.
+    declare_parameter("flat_2d_transform", false);
     // When true, also broadcast base_frame_3d -> inertial_frame_3d with the same rotation.
     declare_parameter("also_publish_3d_alias", false);
     declare_parameter("base_frame_3d", "base_link_3d");
@@ -57,6 +71,8 @@ public:
     tf_source_frame_    = get_parameter("tf_source_frame").as_string();
     tf_fallback_frame_  = get_parameter("tf_fallback_frame").as_string();
     orientation_2d_     = get_parameter("orientation_2d").as_bool();
+    publish_2d_transform_ = get_parameter("publish_2d_transform").as_bool();
+    flat_2d_transform_  = get_parameter("flat_2d_transform").as_bool();
     also_publish_3d_alias_ = get_parameter("also_publish_3d_alias").as_bool();
     base_frame_3d_      = get_parameter("base_frame_3d").as_string();
     inertial_frame_3d_  = get_parameter("inertial_frame_3d").as_string();
@@ -164,24 +180,42 @@ private:
       q_no_yaw.coeffs() = -q_no_yaw.coeffs();
     }
 
-    geometry_msgs::msg::TransformStamped ts;
-    ts.header.stamp    = msg->header.stamp;
-    ts.header.frame_id = base_frame_;
-    ts.child_frame_id  = inertial_frame_;
-    ts.transform.rotation.x = q_no_yaw.x();
-    ts.transform.rotation.y = q_no_yaw.y();
-    ts.transform.rotation.z = q_no_yaw.z();
-    ts.transform.rotation.w = q_no_yaw.w();
+    Eigen::Quaterniond q_2d_tree = flat_2d_transform_
+      ? Eigen::Quaterniond::Identity()
+      : q_no_yaw;
+
+    std::vector<geometry_msgs::msg::TransformStamped> transforms;
+
+    if (publish_2d_transform_) {
+      geometry_msgs::msg::TransformStamped ts;
+      ts.header.stamp    = msg->header.stamp;
+      ts.header.frame_id = base_frame_;
+      ts.child_frame_id  = inertial_frame_;
+      ts.transform.rotation.x = q_2d_tree.x();
+      ts.transform.rotation.y = q_2d_tree.y();
+      ts.transform.rotation.z = q_2d_tree.z();
+      ts.transform.rotation.w = q_2d_tree.w();
+      transforms.push_back(ts);
+    }
 
     if (also_publish_3d_alias_) {
       geometry_msgs::msg::TransformStamped ts2;
       ts2.header.stamp    = msg->header.stamp;
       ts2.header.frame_id = base_frame_3d_;
       ts2.child_frame_id  = inertial_frame_3d_;
-      ts2.transform.rotation = ts.transform.rotation;
-      broadcaster_->sendTransform({ts, ts2});
+      ts2.transform.rotation.x = q_no_yaw.x();
+      ts2.transform.rotation.y = q_no_yaw.y();
+      ts2.transform.rotation.z = q_no_yaw.z();
+      ts2.transform.rotation.w = q_no_yaw.w();
+      transforms.push_back(ts2);
+    }
+
+    if (!transforms.empty()) {
+      broadcaster_->sendTransform(transforms);
     } else {
-      broadcaster_->sendTransform(ts);
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 5000,
+        "Both publish_2d_transform and also_publish_3d_alias are false; no TF is being broadcast.");
     }
 
     last_publish_ns_ = now_ns;
@@ -191,6 +225,8 @@ private:
   std::string imu_topic_, base_frame_, inertial_frame_;
   std::string tf_source_frame_, tf_fallback_frame_;
   bool orientation_2d_{false};
+  bool publish_2d_transform_{true};
+  bool flat_2d_transform_{false};
   bool also_publish_3d_alias_{false};
   std::string base_frame_3d_, inertial_frame_3d_;
   int64_t publish_period_ns_{0};

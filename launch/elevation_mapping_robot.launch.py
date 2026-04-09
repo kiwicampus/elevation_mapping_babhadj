@@ -121,9 +121,9 @@ def generate_launch_description():
             ),
 
             # ── inertial_link_broadcaster ──
-            # Broadcasts base_link->inertial_link (roll/pitch from Madgwick, yaw=0).
-            # Also broadcasts base_link_3d->inertial_link_3d with identical rotation,
-            # so elevation_mapping gets IMU-rate roll/pitch corrections via base_link_3d.
+            # Keeps base_link->inertial_link flat for the elevation EKF's IMU
+            # transform path, while broadcasting the real dynamic roll/pitch only
+            # on base_link_3d->inertial_link_3d for elevation mapping.
             Node(
                 package="elevation_mapping",
                 executable="inertial_link_broadcaster",
@@ -132,6 +132,8 @@ def generate_launch_description():
                 parameters=[{
                     "use_sim_time": False,
                     "orientation_2d": False,
+                    "publish_2d_transform": True,
+                    "flat_2d_transform": True,
                     "also_publish_3d_alias": True,
                     "base_frame_3d": "base_link_3d",
                     "inertial_frame_3d": "inertial_link_3d",

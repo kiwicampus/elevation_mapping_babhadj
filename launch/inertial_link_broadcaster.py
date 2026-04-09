@@ -53,6 +53,11 @@ class InertialLinkBroadcaster(Node):
         # Useful for debugging: if Z estimation improves with this flag, the issue
         # is in the dynamic TF lookup/extrapolation, not in the orientation math.
         self.declare_parameter("orientation_2d", False)
+        # When False, do not publish base_frame -> inertial_frame.
+        self.declare_parameter("publish_2d_transform", True)
+        # When True, publish the 2D tree as flat/identity even if the 3D alias
+        # subtree is receiving the real dynamic roll/pitch.
+        self.declare_parameter("flat_2d_transform", False)
         # When True, also broadcast base_frame_3d -> inertial_frame_3d with the same
         # roll/pitch quaternion. This populates the 3D alias subtree so that
         # elevation_mapping can look up camera orientation through base_link_3d.
@@ -66,6 +71,8 @@ class InertialLinkBroadcaster(Node):
         self._tf_source_frame = self.get_parameter("tf_source_frame").value
         self._tf_fallback_frame = self.get_parameter("tf_fallback_frame").value
         self._orientation_2d = self.get_parameter("orientation_2d").value
+        self._publish_2d_transform = self.get_parameter("publish_2d_transform").value
+        self._flat_2d_transform = self.get_parameter("flat_2d_transform").value
         self._also_publish_3d_alias = self.get_parameter("also_publish_3d_alias").value
         self._base_frame_3d = self.get_parameter("base_frame_3d").value
         self._inertial_frame_3d = self.get_parameter("inertial_frame_3d").value
@@ -159,14 +166,24 @@ class InertialLinkBroadcaster(Node):
         if q_no_yaw[3] < 0:
             q_no_yaw = -q_no_yaw
 
-        ts = TransformStamped()
-        ts.header.stamp = msg.header.stamp
-        ts.header.frame_id = self._base_frame
-        ts.child_frame_id = self._inertial_frame
-        ts.transform.rotation.x = q_no_yaw[0]
-        ts.transform.rotation.y = q_no_yaw[1]
-        ts.transform.rotation.z = q_no_yaw[2]
-        ts.transform.rotation.w = q_no_yaw[3]
+        q_2d_tree = (
+            np.array([0.0, 0.0, 0.0, 1.0])
+            if self._flat_2d_transform
+            else q_no_yaw
+        )
+
+        transforms = []
+
+        if self._publish_2d_transform:
+            ts = TransformStamped()
+            ts.header.stamp = msg.header.stamp
+            ts.header.frame_id = self._base_frame
+            ts.child_frame_id = self._inertial_frame
+            ts.transform.rotation.x = q_2d_tree[0]
+            ts.transform.rotation.y = q_2d_tree[1]
+            ts.transform.rotation.z = q_2d_tree[2]
+            ts.transform.rotation.w = q_2d_tree[3]
+            transforms.append(ts)
 
         if self._also_publish_3d_alias:
             # Publish the identical rotation for the 3D alias subtree.
@@ -177,10 +194,19 @@ class InertialLinkBroadcaster(Node):
             ts2.header.stamp = msg.header.stamp
             ts2.header.frame_id = self._base_frame_3d
             ts2.child_frame_id = self._inertial_frame_3d
-            ts2.transform.rotation = ts.transform.rotation
-            self._broadcaster.sendTransform([ts, ts2])
+            ts2.transform.rotation.x = q_no_yaw[0]
+            ts2.transform.rotation.y = q_no_yaw[1]
+            ts2.transform.rotation.z = q_no_yaw[2]
+            ts2.transform.rotation.w = q_no_yaw[3]
+            transforms.append(ts2)
+
+        if transforms:
+            self._broadcaster.sendTransform(transforms)
         else:
-            self._broadcaster.sendTransform(ts)
+            self.get_logger().warn(
+                "Both publish_2d_transform and also_publish_3d_alias are false; no TF is being broadcast.",
+                throttle_duration_sec=5.0,
+            )
 
 
 def main():

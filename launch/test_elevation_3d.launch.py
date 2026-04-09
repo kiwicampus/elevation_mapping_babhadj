@@ -235,10 +235,9 @@ def generate_launch_description():
                 ),
             ),
             # ── inertial_link_broadcaster (3D mode) ──
-            # Broadcasts base_link -> inertial_link with real roll/pitch from Madgwick.
-            # Also broadcasts base_link_3d -> inertial_link_3d with the same rotation,
-            # so that elevation_mapping's TF lookup through base_link_3d gets correct
-            # camera orientation at Madgwick IMU rate (not limited by EKF rate).
+            # Keeps base_link -> inertial_link flat for the elevation EKF's IMU
+            # transform path, while broadcasting the real dynamic roll/pitch only
+            # on base_link_3d -> inertial_link_3d for elevation mapping.
             ExecuteProcess(
                 cmd=[
                     "python3",
@@ -250,6 +249,10 @@ def generate_launch_description():
                     "use_sim_time:=true",
                     "-p",
                     "orientation_2d:=false",
+                    "-p",
+                    "publish_2d_transform:=true",
+                    "-p",
+                    "flat_2d_transform:=true",
                     "-p",
                     "also_publish_3d_alias:=true",
                     "-p",

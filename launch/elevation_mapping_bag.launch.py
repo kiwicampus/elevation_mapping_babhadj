@@ -131,7 +131,7 @@ def generate_launch_description():
                     "world_frame": "enu",
                     "use_mag": False,
                     "publish_tf": False,
-                    "gain": 0.1,
+                    "gain": 0.03,
                     "zeta": 0.0,
                 }],
                 remappings=[
@@ -152,7 +152,7 @@ def generate_launch_description():
                     "world_frame": "enu",
                     "use_mag": False,
                     "publish_tf": False,
-                    "gain": 0.1,
+                    "gain": 0.03,
                     "zeta": 0.0,
                 }],
                 remappings=[
@@ -179,6 +179,10 @@ def generate_launch_description():
                     "publish_2d_transform": True,
                     "flat_2d_transform": True,
                     "also_publish_3d_alias": True,
+                    "compare_imu_enabled": True,
+                    "compare_imu_topic": "/imu/data",
+                    "compare_tf_source_frame": "base_link",
+                    "compare_rpy_vector_topic": "/debug/base_imu_rpy",
                     "base_frame_3d": "base_link_3d",
                     "inertial_frame_3d": "inertial_link_3d",
                 }],
@@ -219,7 +223,7 @@ def generate_launch_description():
             # This makes elevation_mapping's TF lookup traverse the 3D alias subtree.
             Node(
                 package="elevation_mapping",
-                executable="pointcloud_frame_relay.py",
+                executable="pointcloud_frame_relay",
                 name="pointcloud_frame_relay",
                 output="screen",
                 parameters=[

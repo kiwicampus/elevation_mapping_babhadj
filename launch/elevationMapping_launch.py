@@ -182,7 +182,7 @@ def generate_launch_description():
             # elevation_mapping's TF lookup goes through the 3D alias subtree.
             Node(
                 package="elevation_mapping",
-                executable="pointcloud_frame_relay.py",
+                executable="pointcloud_frame_relay",
                 name="pointcloud_frame_relay",
                 output="screen",
                 parameters=[

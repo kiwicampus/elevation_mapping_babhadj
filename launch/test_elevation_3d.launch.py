@@ -286,7 +286,7 @@ def generate_launch_description():
             # (base_link_3d -> inertial_link_3d -> camera_depth_optical_frame_3d).
             Node(
                 package="elevation_mapping",
-                executable="pointcloud_frame_relay.py",
+                executable="pointcloud_frame_relay",
                 name="pointcloud_frame_relay",
                 output="screen",
                 parameters=[

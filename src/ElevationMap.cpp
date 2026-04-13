@@ -217,8 +217,8 @@ bool ElevationMap::add(const PointCloudType::Ptr pointCloud, Eigen::VectorXf& po
     rawMap_.setTimestamp(timestamp.nanoseconds());  // Point cloud stores time in microseconds.
 
     const std::chrono::duration<double> duration = std::chrono::system_clock::now() - methodStartTime;
-    RCLCPP_INFO(nodeHandle_->get_logger(), "Raw map has been updated with a new point cloud in %f s.",
-                duration.count());
+    // RCLCPP_INFO(nodeHandle_->get_logger(), "Raw map has been updated with a new point cloud in %f s.",
+    //             duration.count());
     return true;
 }
 
@@ -640,10 +640,10 @@ bool ElevationMap::postprocessAndPublishRawElevationMap()
         elevMin = elev.array().isNaN().select(std::numeric_limits<double>::infinity(), elev).minCoeff();
         elevMax = elev.array().isNaN().select(-std::numeric_limits<double>::infinity(), elev).maxCoeff();
     }
-    RCLCPP_INFO(nodeHandle_->get_logger(),
-                "[postprocess debug] size=%dx%d resolution=%.4f valid=%d/%d nan=%d elev_range=[%.2f,%.2f] frame=%s",
-                mapSize(0), mapSize(1), rawMap_.getResolution(), validCount, totalCells, nanCount, elevMin, elevMax,
-                rawMap_.getFrameId().c_str());
+    // RCLCPP_INFO(nodeHandle_->get_logger(),
+    //             "[postprocess debug] size=%dx%d resolution=%.4f valid=%d/%d nan=%d elev_range=[%.2f,%.2f] frame=%s",
+    //             mapSize(0), mapSize(1), rawMap_.getResolution(), validCount, totalCells, nanCount, elevMin, elevMax,
+    //             rawMap_.getFrameId().c_str());
 
     grid_map::GridMap rawMapCopy = rawMap_;
     scopedLock.unlock();

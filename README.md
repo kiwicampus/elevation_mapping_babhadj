@@ -462,7 +462,7 @@ camera_depth_optical_frame_3d
 |---|---|---|
 | `hybrid_odom_publisher` | `launch/hybrid_odom_publisher.py` | Reads odom→base_link (2D) + EKF Z, broadcasts odom→base_link_3d at 50 Hz |
 | `inertial_link_broadcaster` | `launch/inertial_link_broadcaster.py` | Broadcasts base_link→inertial_link and base_link_3d→inertial_link_3d with Madgwick roll/pitch |
-| `pointcloud_frame_relay` | `launch/pointcloud_frame_relay.py` | Copies depth cloud, changes frame_id to `camera_depth_optical_frame_3d` |
+| `pointcloud_frame_relay` | `src/pointcloud_frame_relay_node.cpp` | Copies depth cloud, changes frame_id to `camera_depth_optical_frame_3d` |
 | `static_frame_aliaser` | `launch/static_frame_aliaser.py` | One-shot: reads composed inertial_link→camera_depth_optical_frame from /tf_static, republishes as the _3d alias |
 | `ekf_filter_elevation` | robot_localization ekf_node | Estimates Z from wheel odom vz + camera IMU; `publish_tf: false` |
 

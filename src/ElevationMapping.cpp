@@ -449,7 +449,7 @@ void ElevationMapping::pointCloudCallback(sensor_msgs::msg::PointCloud2::ConstSh
         RCLCPP_ERROR(nodeHandle_->get_logger(), "pointCloudCallback: sensorProcessor is null");
         return;
     }
-    RCLCPP_INFO(nodeHandle_->get_logger(), "Processing data from: %s", pointCloudMsg->header.frame_id.c_str());
+    // RCLCPP_INFO(nodeHandle_->get_logger(), "Processing data from: %s", pointCloudMsg->header.frame_id.c_str());
     if (!updatesEnabled_)
     {
         auto clock = nodeHandle_->get_clock();
@@ -537,7 +537,7 @@ void ElevationMapping::pointCloudCallback(sensor_msgs::msg::PointCloud2::ConstSh
     }
 
     // Process point cloud.
-    RCLCPP_INFO_STREAM(nodeHandle_->get_logger(), "Variance is:" << robotPoseCovariance);
+    // RCLCPP_INFO_STREAM(nodeHandle_->get_logger(), "Variance is:" << robotPoseCovariance);
     PointCloudType::Ptr pointCloudProcessed(new PointCloudType);
     Eigen::VectorXf measurementVariances;
     if (!sensorProcessor_->process(pointCloud, robotPoseCovariance, pointCloudProcessed, measurementVariances,
@@ -555,10 +555,10 @@ void ElevationMapping::pointCloudCallback(sensor_msgs::msg::PointCloud2::ConstSh
         return;
     }
 
-    RCLCPP_INFO_STREAM(nodeHandle_->get_logger(),
-                       "Variance is:" << measurementVariances[0] << " , " << measurementVariances[10] << " , "
-                                      << measurementVariances[100] << " , " << measurementVariances[110] << " , "
-                                      << measurementVariances[120]);
+    // RCLCPP_INFO_STREAM(nodeHandle_->get_logger(),
+    //                    "Variance is:" << measurementVariances[0] << " , " << measurementVariances[10] << " , "
+    //                                   << measurementVariances[100] << " , " << measurementVariances[110] << " , "
+    //                                   << measurementVariances[120]);
 
     boost::recursive_mutex::scoped_lock scopedLock(map_.getRawDataMutex());
 

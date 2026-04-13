@@ -21,7 +21,7 @@ import rclpy
 from rclpy.node import Node
 from rclpy.duration import Duration
 from sensor_msgs.msg import Imu
-from geometry_msgs.msg import TransformStamped
+from geometry_msgs.msg import TransformStamped, Vector3Stamped
 import tf2_ros
 from tf2_ros import TransformBroadcaster
 from scipy.spatial.transform import Rotation
@@ -64,6 +64,8 @@ class InertialLinkBroadcaster(Node):
         self.declare_parameter("also_publish_3d_alias", False)
         self.declare_parameter("base_frame_3d", "base_link_3d")
         self.declare_parameter("inertial_frame_3d", "inertial_link_3d")
+        self.declare_parameter("publish_rpy_vector", True)
+        self.declare_parameter("rpy_vector_topic", "/debug/inertial_link_rpy")
 
         imu_topic = self.get_parameter("imu_topic").value
         self._base_frame = self.get_parameter("base_frame").value
@@ -76,10 +78,17 @@ class InertialLinkBroadcaster(Node):
         self._also_publish_3d_alias = self.get_parameter("also_publish_3d_alias").value
         self._base_frame_3d = self.get_parameter("base_frame_3d").value
         self._inertial_frame_3d = self.get_parameter("inertial_frame_3d").value
+        self._publish_rpy_vector = self.get_parameter("publish_rpy_vector").value
+        self._rpy_vector_topic = self.get_parameter("rpy_vector_topic").value
 
         self._tf_buffer = tf2_ros.Buffer()
         self._tf_listener = tf2_ros.TransformListener(self._tf_buffer, self)
         self._broadcaster = TransformBroadcaster(self)
+        self._rpy_pub = (
+            self.create_publisher(Vector3Stamped, self._rpy_vector_topic, 50)
+            if self._publish_rpy_vector
+            else None
+        )
 
         self._q_base_to_camera = None
         self._camera_frame = None
@@ -153,8 +162,18 @@ class InertialLinkBroadcaster(Node):
         if self._orientation_2d:
             roll, pitch = 0.0, 0.0
 
+        if self._publish_rpy_vector:
+            rpy_msg = Vector3Stamped()
+            rpy_msg.header.stamp = msg.header.stamp
+            rpy_msg.header.frame_id = self._tf_source_frame
+            rpy_msg.vector.x = float(roll)
+            rpy_msg.vector.y = float(pitch)
+            rpy_msg.vector.z = 0.0
+            self._rpy_pub.publish(rpy_msg)
+
         self.get_logger().info(
-            f"RPY deg: roll={np.degrees(roll):.2f}  pitch={np.degrees(pitch):.2f}"
+            f"RPY rad: [{roll:.4f}, {pitch:.4f}, {0.0:.4f}] | "
+            f"deg: [{np.degrees(roll):.2f}, {np.degrees(pitch):.2f}, {0.0:.2f}]"
             f"{'  [2D: zeroed]' if self._orientation_2d else ''}",
             throttle_duration_sec=1.0,
         )

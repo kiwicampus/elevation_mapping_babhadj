@@ -63,8 +63,8 @@ grid_map::GridMap PostprocessingPipelineFunctor::operator()(GridMap& inputMap)
         RCLCPP_DEBUG(nodeHandle_->get_logger(), "Skipping postprocessing: map too small or missing elevation layer.");
         return inputMap;
     }
-    RCLCPP_INFO(nodeHandle_->get_logger(), "[postprocess] About to run filter chain: size=%dx%d resolution=%.4f",
-                size(0), size(1), inputMap.getResolution());
+    // RCLCPP_INFO(nodeHandle_->get_logger(), "[postprocess] About to run filter chain: size=%dx%d resolution=%.4f",
+    //             size(0), size(1), inputMap.getResolution());
     grid_map::GridMap outputMap;
     if (not filterChain_.update(inputMap, outputMap))
     {

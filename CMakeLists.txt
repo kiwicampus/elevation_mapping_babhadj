@@ -156,6 +156,11 @@ add_executable(camera_imu_combiner
 )
 ament_target_dependencies(camera_imu_combiner ${DEPENDENCIES})
 
+add_executable(pointcloud_frame_relay
+  src/pointcloud_frame_relay_node.cpp
+)
+ament_target_dependencies(pointcloud_frame_relay ${DEPENDENCIES})
+
 ament_target_dependencies(${PROJECT_NAME}
   ${DEPENDENCIES}
 )
@@ -189,6 +194,7 @@ install(TARGETS
   hybrid_odom_publisher
   static_frame_aliaser
   camera_imu_combiner
+  pointcloud_frame_relay
   DESTINATION lib/${PROJECT_NAME}
 )
 
@@ -198,7 +204,6 @@ install(PROGRAMS
   launch/inertial_link_broadcaster.py
   launch/hybrid_odom_publisher.py
   launch/static_frame_aliaser.py
-  launch/pointcloud_frame_relay.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

@@ -21,7 +21,6 @@ import os
 from launch import LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument,
-    ExecuteProcess,
     TimerAction,
 )
 from launch.conditions import IfCondition
@@ -55,7 +54,6 @@ def generate_launch_description():
             "robot_filter_parameter.yaml",
         ]
     ]
-    launch_dir = os.path.dirname(__file__)
 
     return LaunchDescription(
         [
@@ -132,9 +130,13 @@ def generate_launch_description():
                 parameters=[{
                     "use_sim_time": False,
                     "orientation_2d": False,
-                    "publish_2d_transform": True,
+                    "publish_2d_transform": False,
                     "flat_2d_transform": True,
                     "also_publish_3d_alias": True,
+                    "compare_imu_enabled": False,
+                    "compare_imu_topic": "/imu/data",
+                    "compare_tf_source_frame": "base_link",
+                    "compare_rpy_vector_topic": "/debug/base_imu_rpy",
                     "base_frame_3d": "base_link_3d",
                     "inertial_frame_3d": "inertial_link_3d",
                 }],
@@ -175,7 +177,7 @@ def generate_launch_description():
             # This makes elevation_mapping's TF lookup traverse the 3D alias subtree.
             Node(
                 package="elevation_mapping",
-                executable="pointcloud_frame_relay.py",
+                executable="pointcloud_frame_relay",
                 name="pointcloud_frame_relay",
                 output="screen",
                 parameters=[

@@ -22,12 +22,7 @@ NOTE: Kill stale processes before relaunching:
 
 import os
 from launch import LaunchDescription
-from launch.actions import (
-    DeclareLaunchArgument,
-    ExecuteProcess,
-    TimerAction,
-    GroupAction,
-)
+from launch.actions import DeclareLaunchArgument, ExecuteProcess, TimerAction
 from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
@@ -42,18 +37,19 @@ def generate_launch_description():
     use_combiner = PythonExpression(["'", separate_camera_imu, "' == 'true'"])
 
     loc_share = get_package_share_directory("location")
-    elev_share = get_package_share_directory("elevation_mapping")
+    navigation_share = get_package_share_directory("navigation")
     trav_share = get_package_share_directory("traversability_estimation")
 
     loc_params = os.path.join(loc_share, "config", "localization_params.yaml")
-    elev_configs = [
-        os.path.join(elev_share, "config", f)
-        for f in [
-            "robots/kiwi.yaml",
-            "elevation_maps/kiwi_map.yaml",
-            "postprocessing/postprocessor_pipeline.yaml",
-        ]
-    ]
+    cupy_core_params = os.path.join(
+        navigation_share, "config", "elevation_mapping_kiwi_parameters.yaml"
+    )
+    cupy_sensor_params = os.path.join(
+        navigation_share, "config", "elevation_mapping_kiwi_sensor_parameter.yaml"
+    )
+    cupy_plugin_params = os.path.join(
+        navigation_share, "config", "elevation_mapping_kiwi_plugin_config.yaml"
+    )
     trav_configs = [
         os.path.join(trav_share, "config", f)
         for f in [
@@ -62,8 +58,6 @@ def generate_launch_description():
             "robot_filter_parameter.yaml",
         ]
     ]
-    launch_dir = os.path.dirname(__file__)
-
     return LaunchDescription(
         [
             DeclareLaunchArgument(
@@ -257,21 +251,34 @@ def generate_launch_description():
                         ],
                     ),
                     Node(
-                        package="elevation_mapping",
-                        executable="elevation_mapping",
-                        name="elevation_mapping",
+                        package="elevation_mapping_cupy",
+                        executable="elevation_mapping_node",
+                        name="elevation_mapping_node",
                         output="screen",
-                        parameters=elev_configs + [
+                        parameters=[
+                            cupy_core_params,
+                            cupy_sensor_params,
+                            {"plugin_config_file": cupy_plugin_params},
                             {"use_sim_time": True},
-                            {"map_frame_id": "odom"},
-                            {"robot_base_frame_id": "base_link_3d"},
-                            {"track_point_frame_id": "base_link_3d"},
-                            {"robot_motion_map_update.covariance_scale": 0.0},
+                            {"map_frame": "odom"},
+                            {"base_frame": "base_link_3d"},
+                            {"corrected_map_frame": "odom"},
+                            {"pose_topic": ""},
+                            {
+                                "subscribers.front_cam.topic_name": "/camera/depth/color/points_3d"
+                            },
+                            # Traversability only needs the elevation layer for init
+                            # and runtime slope computation in this stack.
+                            {"publishers.elevation_map_raw.layers": ["elevation"]},
+                            {"publishers.elevation_map_raw.basic_layers": ["elevation"]},
+                            {"publishers.elevation_map_raw.fps": 5.0},
                         ],
-                        # Redirect the internal subscription from kiwi.yaml topic to
-                        # the relayed cloud (frame_id = camera_depth_optical_frame_3d).
                         remappings=[
-                            ("/camera/depth/color/points", "/camera/depth/color/points_3d"),
+                            ("get_raw_submap", "/get_raw_submap"),
+                            (
+                                "elevation_mapping_node/elevation_map_raw",
+                                "/elevation_map_raw",
+                            ),
                         ],
                     ),
                 ],

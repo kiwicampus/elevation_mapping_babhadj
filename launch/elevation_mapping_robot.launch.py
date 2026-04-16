@@ -31,6 +31,8 @@ from ament_index_python.packages import get_package_share_directory
 
 def generate_launch_description():
     separate_camera_imu = LaunchConfiguration("separate_camera_imu")
+    use_sim_time = LaunchConfiguration("use_sim_time")
+    launch_traversability = LaunchConfiguration("launch_traversability")
     use_combiner = PythonExpression(["'", separate_camera_imu, "' == 'true'"])
 
     loc_share = get_package_share_directory("location")
@@ -64,6 +66,16 @@ def generate_launch_description():
                 description="Set to 'true' if the camera driver publishes separate "
                 "/camera/gyro/sample and /camera/accel/sample topics",
             ),
+            DeclareLaunchArgument(
+                "use_sim_time",
+                default_value="true",
+                description="Use ROS simulated time from /clock for rosbag-based testing",
+            ),
+            DeclareLaunchArgument(
+                "launch_traversability",
+                default_value="true",
+                description="Set to 'false' to skip traversability_estimation (useful for isolated testing)",
+            ),
 
             # ── D435i IMU combiner (only when driver has separate topics) ──
             Node(
@@ -71,52 +83,33 @@ def generate_launch_description():
                 executable="camera_imu_combiner",
                 name="camera_imu_combiner",
                 output="screen",
-                parameters=[{"use_sim_time": False}],
+                parameters=[{"use_sim_time": use_sim_time}],
                 condition=IfCondition(use_combiner),
             ),
 
-            # ── Madgwick filter — separate topics path ──
+            # ── Madgwick filter ──
+            # Input topic switches based on separate_camera_imu:
+            #   true  → /camera/imu_combined (after combiner node)
+            #   false → /camera/imu          (driver publishes single topic)
             Node(
                 package="imu_filter_madgwick",
                 executable="imu_filter_madgwick_node",
                 name="imu_filter_madgwick_camera",
                 output="screen",
                 parameters=[{
-                    "use_sim_time": False,
+                    "use_sim_time": use_sim_time,
                     "world_frame": "enu",
                     "use_mag": False,
                     "publish_tf": False,
-                    "gain": 0.1,
+                    "gain": 0.03,
                     "zeta": 0.0,
                 }],
                 remappings=[
-                    ("imu/data_raw", "/camera/imu_combined"),
+                    ("imu/data_raw", PythonExpression([
+                        "'/camera/imu_combined' if '", separate_camera_imu, "' == 'true' else '/camera/imu'"
+                    ])),
                     ("imu/data", "/camera/imu_filtered"),
                 ],
-                condition=IfCondition(use_combiner),
-            ),
-
-            # ── Madgwick filter — combined topic path ──
-            Node(
-                package="imu_filter_madgwick",
-                executable="imu_filter_madgwick_node",
-                name="imu_filter_madgwick_camera",
-                output="screen",
-                parameters=[{
-                    "use_sim_time": False,
-                    "world_frame": "enu",
-                    "use_mag": False,
-                    "publish_tf": False,
-                    "gain": 0.1,
-                    "zeta": 0.0,
-                }],
-                remappings=[
-                    ("imu/data_raw", "/camera/imu"),
-                    ("imu/data", "/camera/imu_filtered"),
-                ],
-                condition=IfCondition(
-                    PythonExpression(["'", separate_camera_imu, "' != 'true'"])
-                ),
             ),
 
             # ── inertial_link_broadcaster ──
@@ -129,7 +122,7 @@ def generate_launch_description():
                 name="inertial_link_broadcaster",
                 output="screen",
                 parameters=[{
-                    "use_sim_time": False,
+                    "use_sim_time": use_sim_time,
                     "orientation_2d": False,
                     "publish_2d_transform": False,
                     "flat_2d_transform": True,
@@ -151,7 +144,7 @@ def generate_launch_description():
                 executable="ekf_node",
                 name="ekf_filter_elevation",
                 output="screen",
-                parameters=[loc_params, {"use_sim_time": False}],
+                parameters=[loc_params, {"use_sim_time": use_sim_time}],
                 remappings=[("odometry/filtered", "odometry/elevation")],
                 arguments=["--ros-args", "--log-level", "INFO"],
             ),
@@ -166,7 +159,7 @@ def generate_launch_description():
                 name="hybrid_odom_publisher",
                 output="screen",
                 parameters=[
-                    {"use_sim_time": False},
+                    {"use_sim_time": use_sim_time},
                     {"publish_tf_3d": True},
                     {"base_frame_3d": "base_link_3d"},
                 ],
@@ -182,7 +175,7 @@ def generate_launch_description():
                 name="pointcloud_frame_relay",
                 output="screen",
                 parameters=[
-                    {"use_sim_time": False},
+                    {"use_sim_time": use_sim_time},
                     {"input_topic": "/camera/depth/color/points"},
                     {"output_topic": "/camera/depth/color/points_3d"},
                     {"output_frame_id": "camera_depth_optical_frame_3d"},
@@ -200,7 +193,7 @@ def generate_launch_description():
                 name="static_frame_aliaser",
                 output="screen",
                 parameters=[
-                    {"use_sim_time": False},
+                    {"use_sim_time": use_sim_time},
                     {"source_parent": "inertial_link"},
                     {"source_child": "camera_depth_optical_frame"},
                     {"target_parent": "inertial_link_3d"},
@@ -214,7 +207,7 @@ def generate_launch_description():
             # inertial_link_3d). A lightweight elevation-only publisher is exposed
             # for traversability init and /get_raw_submap remains at the expected name.
             TimerAction(
-                period=2.0,
+                period=10.0,
                 actions=[
                     Node(
                         package="elevation_mapping_cupy",
@@ -225,19 +218,7 @@ def generate_launch_description():
                             cupy_core_params,
                             cupy_sensor_params,
                             {"plugin_config_file": cupy_plugin_params},
-                            {"use_sim_time": False},
-                            {"map_frame": "odom"},
-                            {"base_frame": "base_link_3d"},
-                            {"corrected_map_frame": "odom"},
-                            {"pose_topic": ""},
-                            {
-                                "subscribers.front_cam.topic_name": "/camera/depth/color/points_3d"
-                            },
-                            # Traversability only needs the elevation layer for init
-                            # and runtime slope computation in this stack.
-                            {"publishers.elevation_map_raw.layers": ["elevation"]},
-                            {"publishers.elevation_map_raw.basic_layers": ["elevation"]},
-                            {"publishers.elevation_map_raw.fps": 5.0},
+                            {"use_sim_time": use_sim_time},
                         ],
                         remappings=[
                             ("get_raw_submap", "/get_raw_submap"),
@@ -252,14 +233,15 @@ def generate_launch_description():
 
             # ── Traversability estimation ──
             TimerAction(
-                period=5.0,
+                period=20.0,
                 actions=[
                     Node(
                         package="traversability_estimation",
                         executable="traversability_estimation_node",
                         name="traversability_estimation",
                         output="screen",
-                        parameters=trav_configs + [{"use_sim_time": False}],
+                        parameters=trav_configs + [{"use_sim_time": use_sim_time}],
+                        condition=IfCondition(launch_traversability),
                     ),
                 ],
             ),

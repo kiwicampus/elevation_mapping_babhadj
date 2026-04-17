@@ -45,7 +45,8 @@ public:
     declare_parameter("covariance_2d_yaw", 0.0001);
     declare_parameter("publish_tf_3d", true);
     declare_parameter("base_frame_3d", "base_link_3d");
-    declare_parameter("tf_publish_hz", 50.0);
+    // ekf_filter_node_odom (the 2D TF source) runs at 30 Hz — no benefit running faster.
+    declare_parameter("tf_publish_hz", 30.0);
 
     odom_3d_topic_  = get_parameter("odom_3d_topic").as_string();
     output_topic_   = get_parameter("output_topic").as_string();

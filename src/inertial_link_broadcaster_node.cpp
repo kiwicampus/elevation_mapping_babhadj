@@ -18,12 +18,15 @@
  *
  * Improvements over the Python version:
  *  - Eigen quaternion math instead of scipy (no Python interpreter overhead)
- *  - publish_rate parameter (default 50 Hz) throttles the IMU callback so we
- *    don't run heavy math at the full ~200 Hz Madgwick rate
+ *  - IMU callback only caches the latest message (O(1), no math); a separate
+ *    wall timer drives TF computation and broadcast at publish_rate Hz.
+ *    This avoids waking up the heavy computation path at the full ~200 Hz
+ *    Madgwick output rate.
  */
 
 #include <cmath>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -61,10 +64,11 @@ class InertialLinkBroadcaster : public rclcpp::Node
         declare_parameter("also_publish_3d_alias", false);
         declare_parameter("base_frame_3d", "base_link_3d");
         declare_parameter("inertial_frame_3d", "inertial_link_3d");
-        // Throttle: max TF broadcast rate regardless of IMU rate.
-        declare_parameter("publish_rate", 50.0);
-        // Publish the computed [roll, pitch, yaw] vector in radians for plotting/debugging.
-        declare_parameter("publish_rpy_vector", true);
+        // TF broadcast rate [Hz]. ekf_filter_elevation runs at 20 Hz and elevation
+        // mapping updates at 5-8 Hz, so 25 Hz is well above what's needed.
+        declare_parameter("publish_rate", 25.0);
+        // Publish the computed [roll, pitch, yaw] vector for debugging. Off by default.
+        declare_parameter("publish_rpy_vector", false);
         declare_parameter("rpy_vector_topic", "/debug/inertial_link_rpy");
         // Optional second IMU stream for comparison, e.g. /imu/data on the robot body.
         declare_parameter("compare_imu_enabled", false);
@@ -92,12 +96,12 @@ class InertialLinkBroadcaster : public rclcpp::Node
         compare_tf_fallback_frame_ = get_parameter("compare_tf_fallback_frame").as_string();
         compare_rpy_vector_topic_ = get_parameter("compare_rpy_vector_topic").as_string();
 
-        double publish_rate = get_parameter("publish_rate").as_double();
-        publish_period_ns_ = static_cast<int64_t>(1e9 / publish_rate);
+        const double publish_rate = get_parameter("publish_rate").as_double();
 
         tf_buffer_ = std::make_shared<tf2_ros::Buffer>(get_clock());
         tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_, this);
         broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(this);
+
         if (publish_rpy_vector_)
         {
             rpy_pub_ = create_publisher<geometry_msgs::msg::Vector3Stamped>(rpy_vector_topic_, 50);
@@ -107,8 +111,10 @@ class InertialLinkBroadcaster : public rclcpp::Node
             compare_rpy_pub_ = create_publisher<geometry_msgs::msg::Vector3Stamped>(compare_rpy_vector_topic_, 50);
         }
 
+        // IMU callback: only cache the latest message — no math, no TF lookup.
         sub_ = create_subscription<sensor_msgs::msg::Imu>(
             imu_topic_, 10, std::bind(&InertialLinkBroadcaster::imuCallback, this, std::placeholders::_1));
+
         if (compare_imu_enabled_)
         {
             compare_sub_ = create_subscription<sensor_msgs::msg::Imu>(
@@ -116,8 +122,15 @@ class InertialLinkBroadcaster : public rclcpp::Node
                 std::bind(&InertialLinkBroadcaster::compareImuCallback, this, std::placeholders::_1));
         }
 
-        RCLCPP_INFO(get_logger(), "Listening to %s -> broadcasting %s -> %s (throttled to %.0f Hz)", imu_topic_.c_str(),
-                    base_frame_.c_str(), inertial_frame_.c_str(), publish_rate);
+        // Timer drives TF computation and broadcast at publish_rate Hz,
+        // decoupled from the ~200 Hz IMU subscription.
+        const auto period = std::chrono::duration<double>(1.0 / publish_rate);
+        publish_timer_ = create_wall_timer(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(period),
+            std::bind(&InertialLinkBroadcaster::publishCallback, this));
+
+        RCLCPP_INFO(get_logger(), "Listening to %s -> broadcasting %s -> %s at %.0f Hz",
+                    imu_topic_.c_str(), base_frame_.c_str(), inertial_frame_.c_str(), publish_rate);
     }
 
    private:
@@ -204,17 +217,29 @@ class InertialLinkBroadcaster : public rclcpp::Node
         pub->publish(rpy_msg);
     }
 
+    // IMU callback: only cache the latest message. O(1), no math, no TF lookup.
     void imuCallback(const sensor_msgs::msg::Imu::SharedPtr msg)
     {
-        // Throttle to publish_rate — skip messages that arrive too soon.
-        const int64_t now_ns = now().nanoseconds();
-        if (now_ns - last_publish_ns_ < publish_period_ns_)
+        std::lock_guard<std::mutex> lock(imu_mutex_);
+        cached_imu_ = msg;
+    }
+
+    // Timer callback: runs at publish_rate Hz. Reads the cached IMU message,
+    // computes roll/pitch, and broadcasts the TF transform(s).
+    void publishCallback()
+    {
+        sensor_msgs::msg::Imu::SharedPtr imu_copy;
+        {
+            std::lock_guard<std::mutex> lock(imu_mutex_);
+            imu_copy = cached_imu_;
+        }
+        if (!imu_copy)
         {
             return;
         }
 
         double roll, pitch, yaw;
-        if (!computeSourceRpy(*msg, tf_source_frame_, tf_fallback_frame_, q_source_to_camera_,
+        if (!computeSourceRpy(*imu_copy, tf_source_frame_, tf_fallback_frame_, q_source_to_camera_,
                               q_source_to_camera_valid_, camera_frame_, roll, pitch, yaw))
         {
             return;
@@ -228,13 +253,8 @@ class InertialLinkBroadcaster : public rclcpp::Node
 
         if (publish_rpy_vector_)
         {
-            publishRpyVector(msg->header.stamp, tf_source_frame_, rpy_pub_, roll, pitch, yaw);
+            publishRpyVector(imu_copy->header.stamp, tf_source_frame_, rpy_pub_, roll, pitch, yaw);
         }
-
-        // RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 100,
-        //                      "RPY rad: [%.4f, %.4f, %.4f] | deg: [%.2f, %.2f, %.2f]%s", roll, pitch, 0.0,
-        //                      roll * 180.0 / M_PI, pitch * 180.0 / M_PI, 0.0,
-        //                      orientation_2d_ ? "  [2D: zeroed]" : "");
 
         // Reconstruct quaternion from roll/pitch only (zero yaw) — extrinsic XYZ:
         //   q = Rz(0) * Ry(pitch) * Rx(roll) = Ry(pitch) * Rx(roll)
@@ -256,7 +276,7 @@ class InertialLinkBroadcaster : public rclcpp::Node
         if (publish_2d_transform_)
         {
             geometry_msgs::msg::TransformStamped ts;
-            ts.header.stamp = msg->header.stamp;
+            ts.header.stamp = imu_copy->header.stamp;
             ts.header.frame_id = base_frame_;
             ts.child_frame_id = inertial_frame_;
             ts.transform.rotation.x = q_2d_tree.x();
@@ -269,7 +289,7 @@ class InertialLinkBroadcaster : public rclcpp::Node
         if (also_publish_3d_alias_)
         {
             geometry_msgs::msg::TransformStamped ts2;
-            ts2.header.stamp = msg->header.stamp;
+            ts2.header.stamp = imu_copy->header.stamp;
             ts2.header.frame_id = base_frame_3d_;
             ts2.child_frame_id = inertial_frame_3d_;
             ts2.transform.rotation.x = q_no_yaw.x();
@@ -289,8 +309,6 @@ class InertialLinkBroadcaster : public rclcpp::Node
                 get_logger(), *get_clock(), 5000,
                 "Both publish_2d_transform and also_publish_3d_alias are false; no TF is being broadcast.");
         }
-
-        last_publish_ns_ = now_ns;
     }
 
     void compareImuCallback(const sensor_msgs::msg::Imu::SharedPtr msg)
@@ -312,12 +330,11 @@ class InertialLinkBroadcaster : public rclcpp::Node
     bool publish_2d_transform_{true};
     bool flat_2d_transform_{false};
     bool also_publish_3d_alias_{false};
-    bool publish_rpy_vector_{true};
+    bool publish_rpy_vector_{false};
     std::string base_frame_3d_, inertial_frame_3d_;
     std::string rpy_vector_topic_;
     bool compare_imu_enabled_{false};
     std::string compare_imu_topic_, compare_tf_source_frame_, compare_tf_fallback_frame_, compare_rpy_vector_topic_;
-    int64_t publish_period_ns_{0};
 
     // TF infrastructure
     std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
@@ -326,7 +343,7 @@ class InertialLinkBroadcaster : public rclcpp::Node
     rclcpp::Publisher<geometry_msgs::msg::Vector3Stamped>::SharedPtr rpy_pub_;
     rclcpp::Publisher<geometry_msgs::msg::Vector3Stamped>::SharedPtr compare_rpy_pub_;
 
-    // Cached static source->camera rotation (set once after first successful lookup).
+    // Cached static source->camera rotation (set once after first successful TF lookup).
     Eigen::Quaterniond q_source_to_camera_{Eigen::Quaterniond::Identity()};
     bool q_source_to_camera_valid_{false};
     std::string camera_frame_;
@@ -334,11 +351,13 @@ class InertialLinkBroadcaster : public rclcpp::Node
     bool q_compare_source_to_imu_valid_{false};
     std::string compare_imu_frame_;
 
-    // Throttle state
-    int64_t last_publish_ns_{0};
+    // Latest IMU message — written by imuCallback (200 Hz), read by publishCallback (25 Hz).
+    std::mutex imu_mutex_;
+    sensor_msgs::msg::Imu::SharedPtr cached_imu_;
 
     rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr sub_;
     rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr compare_sub_;
+    rclcpp::TimerBase::SharedPtr publish_timer_;
 };
 
 int main(int argc, char** argv)

@@ -622,6 +622,11 @@ bool ElevationMap::postprocessAndPublishRawElevationMap()
         RCLCPP_DEBUG(nodeHandle_->get_logger(), "Skipping raw map postprocessing: map too small for inpaint.");
         return false;
     }
+    // Skip if the map has not yet received any point cloud (frame_id empty = uninitialized)
+    if (rawMap_.getFrameId().empty())
+    {
+        return false;
+    }
     if (!rawMap_.exists("elevation"))
     {
         RCLCPP_WARN_THROTTLE(nodeHandle_->get_logger(), *nodeHandle_->get_clock(), 5,

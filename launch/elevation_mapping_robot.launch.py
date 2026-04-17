@@ -1,5 +1,5 @@
 """
-Elevation Mapping launch for the REAL ROBOT (live data) — CPU version.
+Elevation Mapping launch for the REAL ROBOT (live data) - CPU version.
 
 Replaces the old elevationMapping_launch.py.
 
@@ -8,16 +8,19 @@ running and publishing /tf, /tf_static, /camera/depth/color/points, /camera/imu.
 This launch adds only the 3D elevation estimation stack on top.
 
 Usage:
-  ros2 launch elevation_mapping elevationMapping_launch.py
+  ros2 launch elevation_mapping elevation_mapping_robot.launch.py
 
   # If camera driver publishes separate gyro/accel topics:
-  ros2 launch elevation_mapping elevationMapping_launch.py separate_camera_imu:=true
+  ros2 launch elevation_mapping elevation_mapping_robot.launch.py separate_camera_imu:=true
 
   # Real robot (no bag):
-  ros2 launch elevation_mapping elevationMapping_launch.py use_sim_time:=false
+  ros2 launch elevation_mapping elevation_mapping_robot.launch.py use_sim_time:=false
 
   # Skip traversability (isolated testing):
-  ros2 launch elevation_mapping elevationMapping_launch.py launch_traversability:=false
+  ros2 launch elevation_mapping elevation_mapping_robot.launch.py launch_traversability:=false
+
+  # Disable respawn (for debugging crashes):
+  ros2 launch elevation_mapping elevation_mapping_robot.launch.py use_respawn:=false
 
 NOTE: Kill stale processes before relaunching:
   pkill -f "hybrid_odom_publisher|ekf_filter_elevation|inertial_link_broadcaster|pointcloud_frame_relay|static_frame_aliaser"
@@ -39,6 +42,7 @@ def generate_launch_description():
     separate_camera_imu = LaunchConfiguration("separate_camera_imu")
     use_sim_time = LaunchConfiguration("use_sim_time")
     launch_traversability = LaunchConfiguration("launch_traversability")
+    use_respawn = LaunchConfiguration("use_respawn")
     use_combiner = PythonExpression(["'", separate_camera_imu, "' == 'true'"])
 
     loc_share = get_package_share_directory("location")
@@ -73,16 +77,21 @@ def generate_launch_description():
             ),
             DeclareLaunchArgument(
                 "use_sim_time",
-                default_value="true",
-                description="Use ROS simulated time from /clock for rosbag-based testing",
+                default_value="false",
+                description="Use ROS simulated time from /clock; set true for rosbag playback",
             ),
             DeclareLaunchArgument(
                 "launch_traversability",
                 default_value="true",
                 description="Set to 'false' to skip traversability_estimation (useful for isolated testing)",
             ),
+            DeclareLaunchArgument(
+                "use_respawn",
+                default_value="true",
+                description="Respawn nodes on crash. Set to 'false' for debugging.",
+            ),
 
-            # ── D435i IMU combiner (only when driver has separate topics) ──
+            # -- D435i IMU combiner (only when driver has separate topics) --
             Node(
                 package="elevation_mapping",
                 executable="camera_imu_combiner",
@@ -90,12 +99,14 @@ def generate_launch_description():
                 output="screen",
                 parameters=[{"use_sim_time": use_sim_time}],
                 condition=IfCondition(use_combiner),
+                respawn=use_respawn,
+                respawn_delay=2.0,
             ),
 
-            # ── Madgwick filter ──
+            # -- Madgwick filter --
             # Input topic switches based on separate_camera_imu:
-            #   true  → /camera/imu_combined (after combiner node)
-            #   false → /camera/imu          (driver publishes single topic)
+            #   true  -> /camera/imu_combined (after combiner node)
+            #   false -> /camera/imu          (driver publishes single topic)
             Node(
                 package="imu_filter_madgwick",
                 executable="imu_filter_madgwick_node",
@@ -115,9 +126,11 @@ def generate_launch_description():
                     ])),
                     ("imu/data", "/camera/imu_filtered"),
                 ],
+                respawn=use_respawn,
+                respawn_delay=2.0,
             ),
 
-            # ── inertial_link_broadcaster ──
+            # -- inertial_link_broadcaster --
             # Keeps base_link->inertial_link flat for the elevation EKF's IMU
             # transform path, while broadcasting the real dynamic roll/pitch only
             # on base_link_3d->inertial_link_3d for elevation mapping.
@@ -139,11 +152,13 @@ def generate_launch_description():
                     "base_frame_3d": "base_link_3d",
                     "inertial_frame_3d": "inertial_link_3d",
                 }],
+                respawn=use_respawn,
+                respawn_delay=2.0,
             ),
 
-            # ── 3D EKF ──
+            # -- 3D EKF --
             # Estimates Z height from wheel odometry vz + camera IMU roll/pitch.
-            # publish_tf=false — pose is consumed via hybrid_odom_publisher.
+            # publish_tf=false -- pose is consumed via hybrid_odom_publisher.
             Node(
                 package="robot_localization",
                 executable="ekf_node",
@@ -152,11 +167,13 @@ def generate_launch_description():
                 parameters=[loc_params, {"use_sim_time": use_sim_time}],
                 remappings=[("odometry/filtered", "odometry/elevation")],
                 arguments=["--ros-args", "--log-level", "INFO"],
+                respawn=use_respawn,
+                respawn_delay=5.0,
             ),
 
-            # ── Hybrid odometry publisher ──
+            # -- Hybrid odometry publisher --
             # Merges 2D TF (X, Y, yaw) with EKF Z.
-            # Broadcasts odom->base_link_3d on /tf at 50 Hz (timer-driven, not EKF-rate).
+            # Broadcasts odom->base_link_3d on /tf at 30 Hz (timer-driven, not EKF-rate).
             # Also publishes /odometry/elevation_hybrid for elevation_mapping pose input.
             Node(
                 package="elevation_mapping",
@@ -168,9 +185,11 @@ def generate_launch_description():
                     {"publish_tf_3d": True},
                     {"base_frame_3d": "base_link_3d"},
                 ],
+                respawn=use_respawn,
+                respawn_delay=2.0,
             ),
 
-            # ── Point cloud frame relay ──
+            # -- Point cloud frame relay --
             # Copies /camera/depth/color/points, changes header.frame_id to
             # camera_depth_optical_frame_3d, publishes as /camera/depth/color/points_3d.
             # This makes elevation_mapping's TF lookup traverse the 3D alias subtree.
@@ -185,9 +204,11 @@ def generate_launch_description():
                     {"output_topic": "/camera/depth/color/points_3d"},
                     {"output_frame_id": "camera_depth_optical_frame_3d"},
                 ],
+                respawn=use_respawn,
+                respawn_delay=2.0,
             ),
 
-            # ── Static frame aliaser ──
+            # -- Static frame aliaser --
             # Reads the composed inertial_link->camera_depth_optical_frame from /tf_static
             # (published by the realsense driver at startup) and republishes it as
             # inertial_link_3d->camera_depth_optical_frame_3d.
@@ -203,9 +224,11 @@ def generate_launch_description():
                     {"target_parent": "inertial_link_3d"},
                     {"target_child": "camera_depth_optical_frame_3d"},
                 ],
+                respawn=use_respawn,
+                respawn_delay=2.0,
             ),
 
-            # ── CPU elevation mapping ──
+            # -- CPU elevation mapping --
             # Delayed 3 s to let TF tree settle (EKF, hybrid publisher, static aliaser).
             # Uses base_link_3d and /camera/depth/color/points_3d (set in kiwi.yaml).
             # Remaps postprocessed raw output to /elevation_map_raw for traversability.
@@ -223,11 +246,13 @@ def generate_launch_description():
                             ("get_raw_submap", "/get_raw_submap"),
                             ("elevation_map_raw_post", "/elevation_map_raw"),
                         ],
+                        respawn=use_respawn,
+                        respawn_delay=5.0,
                     ),
                 ],
             ),
 
-            # ── Traversability estimation ──
+            # -- Traversability estimation --
             TimerAction(
                 period=15.0,
                 actions=[
@@ -238,6 +263,8 @@ def generate_launch_description():
                         output="screen",
                         parameters=trav_configs + [{"use_sim_time": use_sim_time}],
                         condition=IfCondition(launch_traversability),
+                        respawn=use_respawn,
+                        respawn_delay=5.0,
                     ),
                 ],
             ),

@@ -1,17 +1,23 @@
 """
-Elevation Mapping launch for the REAL ROBOT (live data).
+Elevation Mapping launch for the REAL ROBOT (live data) — CPU version.
 
-Replaces: elevationMapping_launch.py
+Replaces the old elevationMapping_launch.py.
 
 Assumes the robot's main stack (Nav2, localization, realsense driver) is already
 running and publishing /tf, /tf_static, /camera/depth/color/points, /camera/imu.
 This launch adds only the 3D elevation estimation stack on top.
 
 Usage:
-  ros2 launch elevation_mapping elevation_mapping_robot.launch.py
+  ros2 launch elevation_mapping elevationMapping_launch.py
 
   # If camera driver publishes separate gyro/accel topics:
-  ros2 launch elevation_mapping elevation_mapping_robot.launch.py separate_camera_imu:=true
+  ros2 launch elevation_mapping elevationMapping_launch.py separate_camera_imu:=true
+
+  # Real robot (no bag):
+  ros2 launch elevation_mapping elevationMapping_launch.py use_sim_time:=false
+
+  # Skip traversability (isolated testing):
+  ros2 launch elevation_mapping elevationMapping_launch.py launch_traversability:=false
 
 NOTE: Kill stale processes before relaunching:
   pkill -f "hybrid_odom_publisher|ekf_filter_elevation|inertial_link_broadcaster|pointcloud_frame_relay|static_frame_aliaser"
@@ -36,19 +42,18 @@ def generate_launch_description():
     use_combiner = PythonExpression(["'", separate_camera_imu, "' == 'true'"])
 
     loc_share = get_package_share_directory("location")
-    navigation_share = get_package_share_directory("navigation")
+    elev_share = get_package_share_directory("elevation_mapping")
     trav_share = get_package_share_directory("traversability_estimation")
 
     loc_params = os.path.join(loc_share, "config", "localization_params.yaml")
-    cupy_core_params = os.path.join(
-        navigation_share, "config", "elevation_mapping_kiwi_parameters.yaml"
-    )
-    cupy_sensor_params = os.path.join(
-        navigation_share, "config", "elevation_mapping_kiwi_sensor_parameter.yaml"
-    )
-    cupy_plugin_params = os.path.join(
-        navigation_share, "config", "elevation_mapping_kiwi_plugin_config.yaml"
-    )
+    elev_configs = [
+        os.path.join(elev_share, "config", f)
+        for f in [
+            "robots/kiwi.yaml",
+            "elevation_maps/kiwi_map.yaml",
+            "postprocessing/postprocessor_pipeline.yaml",
+        ]
+    ]
     trav_configs = [
         os.path.join(trav_share, "config", f)
         for f in [
@@ -152,7 +157,7 @@ def generate_launch_description():
             # ── Hybrid odometry publisher ──
             # Merges 2D TF (X, Y, yaw) with EKF Z.
             # Broadcasts odom->base_link_3d on /tf at 50 Hz (timer-driven, not EKF-rate).
-            # Roll/pitch come from inertial_link_broadcaster, not from this transform.
+            # Also publishes /odometry/elevation_hybrid for elevation_mapping pose input.
             Node(
                 package="elevation_mapping",
                 executable="hybrid_odom_publisher",
@@ -185,8 +190,7 @@ def generate_launch_description():
             # ── Static frame aliaser ──
             # Reads the composed inertial_link->camera_depth_optical_frame from /tf_static
             # (published by the realsense driver at startup) and republishes it as
-            # inertial_link_3d->camera_depth_optical_frame_3d. Polls every 0.5 s internally
-            # until the realsense driver has posted the static frames.
+            # inertial_link_3d->camera_depth_optical_frame_3d.
             Node(
                 package="elevation_mapping",
                 executable="static_frame_aliaser",
@@ -201,31 +205,23 @@ def generate_launch_description():
                 ],
             ),
 
-            # ── Cupy elevation mapping ──
-            # Delayed 2 s to let TF tree settle (EKF, hybrid publisher, static aliaser).
-            # Uses base_link_3d as robot frame (correct Z + Madgwick roll/pitch via
-            # inertial_link_3d). A lightweight elevation-only publisher is exposed
-            # for traversability init and /get_raw_submap remains at the expected name.
+            # ── CPU elevation mapping ──
+            # Delayed 3 s to let TF tree settle (EKF, hybrid publisher, static aliaser).
+            # Uses base_link_3d and /camera/depth/color/points_3d (set in kiwi.yaml).
+            # Remaps postprocessed raw output to /elevation_map_raw for traversability.
+            # Remaps get_raw_submap to the absolute /get_raw_submap for traversability.
             TimerAction(
-                period=10.0,
+                period=3.0,
                 actions=[
                     Node(
-                        package="elevation_mapping_cupy",
-                        executable="elevation_mapping_node",
-                        name="elevation_mapping_node",
+                        package="elevation_mapping",
+                        executable="elevation_mapping",
+                        name="elevation_mapping",
                         output="screen",
-                        parameters=[
-                            cupy_core_params,
-                            cupy_sensor_params,
-                            {"plugin_config_file": cupy_plugin_params},
-                            {"use_sim_time": use_sim_time},
-                        ],
+                        parameters=elev_configs + [{"use_sim_time": use_sim_time}],
                         remappings=[
                             ("get_raw_submap", "/get_raw_submap"),
-                            (
-                                "elevation_mapping_node/elevation_map_raw",
-                                "/elevation_map_raw",
-                            ),
+                            ("elevation_map_raw_post", "/elevation_map_raw"),
                         ],
                     ),
                 ],
@@ -233,7 +229,7 @@ def generate_launch_description():
 
             # ── Traversability estimation ──
             TimerAction(
-                period=20.0,
+                period=15.0,
                 actions=[
                     Node(
                         package="traversability_estimation",

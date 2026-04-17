@@ -3,7 +3,7 @@
     inputs: ['front_cam']
     front_cam:
       type: pointcloud
-      topic: /camera/depth/color/points
+      topic: /camera/depth/color/points_3d
       queue_size: 1
       publish_on_update: true
       sensor_processor:
@@ -17,10 +17,10 @@
         normal_factor_e: 1.0
         lateral_factor: 0.01576
     map_frame_id: "odom"
-    robot_base_frame_id: "base_link"
+    robot_base_frame_id: "base_link_3d"
     robot_pose_with_covariance_topic: "/odometry/elevation_hybrid"
     robot_pose_cache_size: 200
-    track_point_frame_id: "base_link"
+    track_point_frame_id: "base_link_3d"
     track_point_x: 0.0
     track_point_y: 0.0
     track_point_z: 0.0

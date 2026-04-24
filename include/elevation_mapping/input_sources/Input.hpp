@@ -94,6 +94,12 @@ class Input {
     uint32_t queueSize_{0};
     std::string topic_;
     bool publishOnUpdate_{true};
+    // Optional override for the incoming message's header.frame_id. When non-empty, each
+    // received pointcloud is shallow-copied with header.frame_id rewritten before being
+    // forwarded to the downstream callback. Lets the mapper consume a pointcloud whose
+    // raw frame_id points into a different TF subtree than the one we want to project
+    // into, without needing a separate relay node.
+    std::string overrideFrameId_;
   };
   ThreadSafeDataWrapper<Parameters> parameters_;
 };
@@ -102,13 +108,32 @@ template <typename MsgT>
 void Input::registerCallback(ElevationMapping& map, CallbackT<MsgT> callback) {
   const Parameters parameters{parameters_.getData()};
 
-  std::function<void(sensor_msgs::msg::PointCloud2::ConstSharedPtr msg)> bound_callback_func =
-  std::bind(callback, std::ref(map), std::placeholders::_1, parameters.publishOnUpdate_, std::ref(sensorProcessor_));
+  auto inner = std::bind(callback, std::ref(map), std::placeholders::_1, parameters.publishOnUpdate_, std::ref(sensorProcessor_));
+
+  std::function<void(sensor_msgs::msg::PointCloud2::ConstSharedPtr msg)> bound_callback_func;
+  if (parameters.overrideFrameId_.empty()) {
+    bound_callback_func = inner;
+  } else {
+    const std::string overrideFrameId = parameters.overrideFrameId_;
+    // In-place header rewrite. The mapper's next step (pcl_conversions::toPCL) fully copies
+    // the message anyway, so there's no need to pre-copy just to change header.frame_id.
+    // const_pointer_cast is safe here because elevation_mapping is the sole in-process
+    // consumer of this topic; no other subscriber will see the mutation.
+    bound_callback_func = [inner, overrideFrameId](sensor_msgs::msg::PointCloud2::ConstSharedPtr msg) {
+      std::const_pointer_cast<sensor_msgs::msg::PointCloud2>(msg)->header.frame_id = overrideFrameId;
+      inner(msg);
+    };
+  }
 
   subscriber_ = nodeHandle_->create_subscription<sensor_msgs::msg::PointCloud2>(parameters.topic_, rclcpp::SensorDataQoS(),
     bound_callback_func);
-  
-  RCLCPP_INFO(nodeHandle_->get_logger(), "Subscribing to %s: %s, queue_size: %i.", parameters.type_.c_str(), parameters.topic_.c_str(), parameters.queueSize_);
+
+  if (parameters.overrideFrameId_.empty()) {
+    RCLCPP_INFO(nodeHandle_->get_logger(), "Subscribing to %s: %s, queue_size: %i.", parameters.type_.c_str(), parameters.topic_.c_str(), parameters.queueSize_);
+  } else {
+    RCLCPP_INFO(nodeHandle_->get_logger(), "Subscribing to %s: %s, queue_size: %i (header.frame_id overridden to '%s').",
+                parameters.type_.c_str(), parameters.topic_.c_str(), parameters.queueSize_, parameters.overrideFrameId_.c_str());
+  }
 }
 
 }  // namespace elevation_mapping

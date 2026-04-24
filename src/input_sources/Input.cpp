@@ -30,6 +30,9 @@ bool Input::configure(std::string& inputSourceName, const std::string& sourceCon
   nodeHandle_->declare_parameter(inputSourceName + ".publish_on_update",true);
   nodeHandle_->declare_parameter(inputSourceName + ".sensor_processor.type","");
   nodeHandle_->declare_parameter(inputSourceName + ".type","");
+  // Optional: if non-empty, each incoming pointcloud's header.frame_id is rewritten to this
+  // value before the downstream callback runs. Empty string = pass through unchanged.
+  nodeHandle_->declare_parameter(inputSourceName + ".override_frame_id", std::string(""));
 
   if (!nodeHandle_->get_parameter(inputSourceName + ".type", parameters.type_)){
     RCLCPP_ERROR(nodeHandle_->get_logger(), "Could not configure input source %s because no type was given.", inputSourceName.c_str());
@@ -50,6 +53,8 @@ bool Input::configure(std::string& inputSourceName, const std::string& sourceCon
   if (!nodeHandle_->get_parameter(inputSourceName + ".sensor_processor.type", sensorProcessorType)){
     RCLCPP_ERROR(nodeHandle_->get_logger(), "Could not configure input source %s because no sensor_processor was given.", inputSourceName.c_str());
   }
+  // Optional override. Missing/empty means no rewrite.
+  nodeHandle_->get_parameter(inputSourceName + ".override_frame_id", parameters.overrideFrameId_);
   //RCLCPP_INFO(nodeHandle_->get_logger(), "Configured %s!!!!\n",parameters.publishOnUpdate_ );
   parameters.name_ = inputSourceName;
   

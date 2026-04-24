@@ -12,8 +12,7 @@ namespace elevation_mapping {
 
 PostprocessorPool::PostprocessorPool(std::size_t poolSize, std::shared_ptr<rclcpp::Node>& nodeHandle) {
   nodeHandle->declare_parameter("output_topic", std::string("elevation_map_raw_post"));
-  nodeHandle->declare_parameter("postprocessor_pipeline_name",
-                                rclcpp::ParameterValue(std::string("postprocessor_pipeline")));
+  nodeHandle->declare_parameter("postprocessor_pipeline_name", rclcpp::ParameterValue(std::string("postprocessor_pipeline")));
 
   for (std::size_t i = 0; i < poolSize; ++i) {
     // Add worker to the collection.
@@ -22,7 +21,7 @@ PostprocessorPool::PostprocessorPool(std::size_t poolSize, std::shared_ptr<rclcp
     availableServices_.push_back(i);
   }
 }
-
+ 
 PostprocessorPool::~PostprocessorPool() {
   // Force all threads to return from io_service::run().
   for (auto& worker : workers_) {
@@ -66,10 +65,11 @@ void PostprocessorPool::wrapTask(size_t serviceIndex) {
   try {
     GridMap postprocessedMap = workers_.at(serviceIndex)->processBuffer();
     workers_.at(serviceIndex)->publish(postprocessedMap);
-  } catch (const std::exception& exception) {
-    RCLCPP_ERROR_STREAM(
-        rclcpp::get_logger("elevation_mapping"),
-        "Postprocessor pipeline, thread " << serviceIndex << " experienced an error: " << exception.what());
+  }
+  // Suppress all exceptions.
+  catch (const std::exception& exception) {
+    RCLCPP_ERROR_STREAM(rclcpp::get_logger("elevation_mapping"),
+                        "Postprocessor pipeline, thread " << serviceIndex << " experienced an error: " << exception.what());
   } catch (...) {
     RCLCPP_ERROR_STREAM(rclcpp::get_logger("elevation_mapping"),
                         "Postprocessor pipeline, thread " << serviceIndex << " experienced an unknown exception.");

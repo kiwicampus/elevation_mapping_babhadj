@@ -1,0 +1,14 @@
+# Build / install artifacts
+build/
+install/
+log/
+
+# Python bytecode
+__pycache__/
+*.pyc
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store

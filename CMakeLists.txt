@@ -136,26 +136,6 @@ add_executable(listener
   src/test.cpp
 )
 
-add_executable(inertial_link_broadcaster
-  src/inertial_link_broadcaster_node.cpp
-)
-ament_target_dependencies(inertial_link_broadcaster ${DEPENDENCIES})
-
-add_executable(hybrid_odom_publisher
-  src/hybrid_odom_publisher_node.cpp
-)
-ament_target_dependencies(hybrid_odom_publisher ${DEPENDENCIES})
-
-add_executable(static_frame_aliaser
-  src/static_frame_aliaser_node.cpp
-)
-ament_target_dependencies(static_frame_aliaser ${DEPENDENCIES})
-
-add_executable(camera_imu_combiner
-  src/camera_imu_combiner_node.cpp
-)
-ament_target_dependencies(camera_imu_combiner ${DEPENDENCIES})
-
 add_executable(pointcloud_frame_relay
   src/pointcloud_frame_relay_node.cpp
 )
@@ -190,20 +170,12 @@ install(TARGETS
 install(TARGETS
   ${PROJECT_NAME}
   listener
-  inertial_link_broadcaster
-  hybrid_odom_publisher
-  static_frame_aliaser
-  camera_imu_combiner
   pointcloud_frame_relay
   DESTINATION lib/${PROJECT_NAME}
 )
 
 install(PROGRAMS
   launch/tf_odom_filter.py
-  launch/camera_imu_combiner.py
-  launch/inertial_link_broadcaster.py
-  launch/hybrid_odom_publisher.py
-  launch/static_frame_aliaser.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

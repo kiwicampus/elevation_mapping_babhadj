@@ -11,14 +11,19 @@
 namespace elevation_mapping {
 
 PostprocessingWorker::PostprocessingWorker(std::shared_ptr<rclcpp::Node> nodeHandle)
-    : functor_(nodeHandle), work_(ioService_), thread_(boost::bind(&boost::asio::io_service::run, &ioService_))
-{
+    : functor_(nodeHandle), work_(ioService_),
+     thread_(boost::bind(&boost::asio::io_service::run, &ioService_)) {}
+
+PostprocessingWorker::GridMap PostprocessingWorker::processBuffer() {
+  return functor_(dataBuffer_);
 }
 
-PostprocessingWorker::GridMap PostprocessingWorker::processBuffer() { return functor_(dataBuffer_); }
-
-void PostprocessingWorker::publish(const GridMap& gridMap) const { functor_.publish(gridMap); }
-
-bool PostprocessingWorker::hasSubscribers() const { return functor_.hasSubscribers(); }
+void PostprocessingWorker::publish(const GridMap& gridMap) const {
+  functor_.publish(gridMap);
+}
+ 
+bool PostprocessingWorker::hasSubscribers() const {
+  return functor_.hasSubscribers();
+}
 
 }  // namespace elevation_mapping

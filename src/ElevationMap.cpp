@@ -194,8 +194,9 @@ bool ElevationMap::add(const PointCloudType::Ptr pointCloud, Eigen::VectorXf& po
   clean();
   rawMap_.setTimestamp(timestamp.nanoseconds());  // Point cloud stores time in microseconds.
 
-  const std::chrono::duration<double> duration  = std::chrono::system_clock::now() - methodStartTime;
-  RCLCPP_INFO(nodeHandle_->get_logger(), "Raw map has been updated with a new point cloud in %f s.", duration.count());
+  const std::chrono::duration<double> duration = std::chrono::system_clock::now() - methodStartTime;
+  // RCLCPP_INFO(nodeHandle_->get_logger(), "Raw map has been updated with a new point cloud in %f s.",
+  //             duration.count());
   return true;
 }
 
@@ -563,6 +564,27 @@ bool ElevationMap::postprocessAndPublishRawElevationMap() {
                          "Skipping raw map postprocessing: elevation layer missing.");
     return false;
   }
+  // Debug: log map state before postprocessing (helps diagnose inpaint crashes).
+  const grid_map::Matrix& elev = rawMap_["elevation"];
+  const int totalCells = elev.size();
+  const int nanCount = (elev.array().isNaN()).count();
+  const int validCount = totalCells - nanCount;
+  double elevMin = std::numeric_limits<double>::quiet_NaN();
+  double elevMax = std::numeric_limits<double>::quiet_NaN();
+  if (validCount > 0) {
+    elevMin = elev.array().isNaN().select(std::numeric_limits<double>::infinity(), elev).minCoeff();
+    elevMax = elev.array().isNaN().select(-std::numeric_limits<double>::infinity(), elev).maxCoeff();
+  }
+  (void)totalCells;
+  (void)nanCount;
+  (void)validCount;
+  (void)elevMin;
+  (void)elevMax;
+  // RCLCPP_INFO(nodeHandle_->get_logger(),
+  //             "[postprocess debug] size=%dx%d resolution=%.4f valid=%d/%d nan=%d elev_range=[%.2f,%.2f] frame=%s",
+  //             mapSize(0), mapSize(1), rawMap_.getResolution(), validCount, totalCells, nanCount, elevMin, elevMax,
+  //             rawMap_.getFrameId().c_str());
+
   grid_map::GridMap rawMapCopy = rawMap_;
   scopedLock.unlock();
   return postprocessorPool_.runTask(rawMapCopy);

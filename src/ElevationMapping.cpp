@@ -388,6 +388,7 @@ void ElevationMapping::pointCloudCallback(sensor_msgs::msg::PointCloud2::ConstSh
     RCLCPP_ERROR(nodeHandle_->get_logger(), "pointCloudCallback: sensorProcessor is null");
     return;
   }
+  // RCLCPP_INFO(nodeHandle_->get_logger(), "Processing data from: %s", pointCloudMsg->header.frame_id.c_str());
   if (!updatesEnabled_) {
     auto clock = nodeHandle_->get_clock();
     RCLCPP_WARN_THROTTLE(nodeHandle_->get_logger(), *(clock), 10, "Updating of elevation map is disabled. (Warning message is throttled, 10s.)");

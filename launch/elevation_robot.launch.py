@@ -17,8 +17,8 @@ normal path. Set LAUNCH_POINTCLOUD_FRAME_RELAY=1 to run pointcloud_frame_relay
 alongside for side-by-side debugging.
 
 Usage:
-  ros2 launch elevation_mapping elevation_only.launch.py
-  LAUNCH_POINTCLOUD_FRAME_RELAY=1 ros2 launch elevation_mapping elevation_only.launch.py
+  ros2 launch elevation_mapping elevation_robot.launch.py
+  LAUNCH_POINTCLOUD_FRAME_RELAY=1 ros2 launch elevation_mapping elevation_robot.launch.py
 """
 
 import os

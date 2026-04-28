@@ -62,6 +62,12 @@ grid_map::GridMap PostprocessingPipelineFunctor::operator()(GridMap& inputMap) {
     return inputMap;
   }
 
+  // grid_map::FilterChain::update constructs a fresh outputMap whose header is unset.
+  // Copy frame_id and timestamp from the input so downstream consumers (traversability)
+  // don't reject the message for empty frame_id.
+  outputMap.setFrameId(inputMap.getFrameId());
+  outputMap.setTimestamp(inputMap.getTimestamp());
+
   return outputMap;
 }
 

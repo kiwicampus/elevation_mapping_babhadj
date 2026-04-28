@@ -51,11 +51,17 @@ def generate_launch_description():
             "postprocessing/postprocessor_pipeline.yaml",
         ]
     ]
+    # robot_footprint_parameter.yaml is intentionally omitted: the active filter
+    # chain is per-cell (NormalVectorsFilter → SlopeFilter), and the published
+    # /traversability_map is consumed by elevation_grid_layer which lets the Nav2
+    # costmap handle footprint inflation. The footprint params only feed the
+    # service-based isTraversable/checkInclination queries we don't use, plus the
+    # cosmetic /footprint_polygon and /untraversable_polygon viz topics.
     trav_configs = [
         os.path.join(trav_share, "config", f)
         for f in [
             "robot.yaml",
-            "robot_footprint_parameter.yaml",
+            # "robot_footprint_parameter.yaml",
             "robot_filter_parameter.yaml",
         ]
     ]

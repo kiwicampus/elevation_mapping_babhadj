@@ -32,7 +32,6 @@ find_package(tf2_ros REQUIRED)
 find_package(tf2_eigen REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
-find_package(nav_msgs REQUIRED)
 
 find_package(Boost REQUIRED COMPONENTS system thread)
 find_package(Eigen3 REQUIRED)
@@ -56,7 +55,6 @@ set(DEPENDENCIES
   tf2_eigen
   tf2_geometry_msgs
   geometry_msgs
-  nav_msgs
   # Threads
 )
 

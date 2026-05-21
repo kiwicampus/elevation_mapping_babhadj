@@ -11,13 +11,13 @@
     robot_motion_map_update/covariance_scale_rotation_y: 0.0
     robot_motion_map_update/covariance_scale_rotation_z: 0.0
 
-    length_in_x: 6.0
-    length_in_y: 6.0
+    length_in_x: 4.9
+    length_in_y: 4.9
     position_x: 0.0
     position_y: 0.0
-    resolution: 0.1
+    resolution: 0.07
     min_variance: 0.0001
-    max_variance: 0.05
+    max_variance: 0.002 #reduced from 0.05 to theoretically fastest cleaning.
     mahalanobis_distance_threshold: 1.5
     multi_height_noise: 0.001
     fused_map_publishing_rate: 0.0

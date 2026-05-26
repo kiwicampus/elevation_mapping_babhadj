@@ -306,6 +306,12 @@ class ElevationMapping {
   kindr::Position3D trackPoint_;
   std::string trackPointFrameId_;
 
+  //! Last 2-D position at which map_.move() was actually called. Compared against the current
+  //! track-point position each callback; the TF lookup is skipped when the displacement is
+  //! smaller than half a map cell (resolution/2), since grid_map::move() would be a no-op anyway.
+  grid_map::Position lastMovePosition_;
+  bool lastMovePositionValid_{false};
+
   //! ROS topics for subscriptions.
   std::string pointCloudTopic_;  //!< Deprecated, use input_source instead.
   std::string robotPoseTopic_;

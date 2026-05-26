@@ -633,6 +633,21 @@ bool ElevationMapping::updatePrediction(const rclcpp::Time& time) {
 bool ElevationMapping::updateMapLocation() {
   RCLCPP_DEBUG(nodeHandle_->get_logger(), "Elevation map is checked for relocalization.");
 
+  // Cheap proxy check via the odometry cache: if the robot has not moved by at least
+  // half a map cell since the last move() call, the TF lookup + move() would be a no-op,
+  // so skip both. map_frame_id == odom so odometry positions are directly comparable.
+  if (!ignoreRobotMotionUpdates_ && lastMovePositionValid_) {
+    auto poseMsg = robotPoseCache_.getElemBeforeTime(lastPointCloudUpdateTime_);
+    if (poseMsg) {
+      const double dx = poseMsg->pose.pose.position.x - lastMovePosition_.x();
+      const double dy = poseMsg->pose.pose.position.y - lastMovePosition_.y();
+      const double halfCell = map_.getRawGridMap().getResolution() * 0.5;
+      if (dx * dx + dy * dy < halfCell * halfCell) {
+        return true;
+      }
+    }
+  }
+
   geometry_msgs::msg::PointStamped trackPoint;
   trackPoint.header.frame_id = trackPointFrameId_;
   trackPoint.header.stamp = rclcpp::Time(0);
@@ -650,6 +665,10 @@ bool ElevationMapping::updateMapLocation() {
   kindr_ros::convertFromRosGeometryMsg(trackPointTransformed.point, position3d);
   grid_map::Position position = position3d.vector().head(2);
   map_.move(position);
+
+  lastMovePosition_ = position;
+  lastMovePositionValid_ = true;
+
   return true;
 }
 

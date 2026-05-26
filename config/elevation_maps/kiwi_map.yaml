@@ -11,7 +11,7 @@
     robot_motion_map_update/covariance_scale_rotation_y: 0.0
     robot_motion_map_update/covariance_scale_rotation_z: 0.0
 
-    length_in_x: 4.9
+    length_in_x: 6.3
     length_in_y: 4.9
     position_x: 0.0
     position_y: 0.0

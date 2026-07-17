@@ -1,0 +1,53 @@
+/**:
+  ros__parameters:
+    # Livox bots (NODE_LIVOX_LIDAR=1): dense near-range stereo + sparse long-range lidar.
+    # Selected by elevation_mapping.launch.py when NODE_LIVOX_LIDAR=1 (unless
+    # EM_CPU_INPUT_SOURCES_FILE overrides).
+    inputs: ["front_cam", "livox"]
+    front_cam:
+      type: pointcloud
+      topic: /camera/depth/color/points
+      override_frame_id: camera_depth_optical_frame_3d
+      queue_size: 1
+      publish_on_update: true
+      sensor_processor:
+        type: structured_light
+        ignore_points_above: 0.65
+        ignore_points_below: -0.5
+        cutoff_min_depth: 0.2
+        cutoff_max_depth: 50.0
+        normal_factor_a: 0.000611
+        normal_factor_b: 0.003587
+        normal_factor_c: 0.3515
+        normal_factor_d: 0.0
+        normal_factor_e: 1.0
+        lateral_factor: 0.01576
+    livox:
+      type: pointcloud
+      # Kronos' existing filtered lidar cloud (sensor_msgs/PointCloud2, native
+      # frame livox_link) that already feeds Nav2's STVL layer.
+      topic: /livox/filtered
+      # Relabel frame_id so TF lookups go through inertial_link_3d. Requires
+      # 'livox_link' in flatten_relay's mirror_3d_children.
+      override_frame_id: livox_link_3d
+      queue_size: 1
+      publish_on_update: true
+      sensor_processor:
+        type: laser
+        # Drop ceiling / overhead structure: height [m] relative to
+        # robot_base_frame_id (inertial_link_3d).
+        ignore_points_above: 0.65
+        ignore_points_below: -0.5
+        # TODO(livox-mid360): placeholder noise-model constants, NOT
+        # validated. See config/sensor_processors/livox_mid360.yaml.
+        min_radius: 0.02
+        beam_angle: 0.0049
+        beam_constant: 0.0015
+    map_frame_id: "odom"
+    robot_base_frame_id: "inertial_link_3d"
+    robot_pose_with_covariance_topic: "/odometry/for_elevation"
+    robot_pose_cache_size: 200
+    track_point_frame_id: "inertial_link_3d"
+    track_point_x: 0.0
+    track_point_y: 0.0
+    track_point_z: 0.0

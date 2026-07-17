@@ -1,6 +1,8 @@
 /**:
   ros__parameters:
-    inputs: ['front_cam']
+    # Default (no Livox): stereo depth only. Livox bots use kiwi_3d_lidar.yaml
+    # selected by elevation_mapping.launch.py when NODE_LIVOX_LIDAR=1.
+    inputs: ["front_cam"]
     front_cam:
       type: pointcloud
       topic: /camera/depth/color/points
@@ -9,6 +11,9 @@
       publish_on_update: true
       sensor_processor:
         type: structured_light
+        # Height gate relative to robot_base_frame_id (inertial_link_3d).
+        ignore_points_above: 0.65
+        ignore_points_below: -0.5
         cutoff_min_depth: 0.2
         cutoff_max_depth: 50.0
         normal_factor_a: 0.000611

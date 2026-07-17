@@ -1,0 +1,32 @@
+# Livox Mid-360
+#
+# TODO: placeholder constants, copied from the Velodyne/RSLidar starting
+# points below -- NOT yet validated against a real Mid-360. The `laser`
+# sensor model (LaserSensorProcessor) treats every sensor as an anisotropic
+# beam: standardDeviationInBeamDirection = min_radius,
+# standardDeviationOfBeamRadius = beam_constant + beam_angle * range.
+#
+# To derive real values:
+#   - min_radius:    range-noise floor (1-sigma), from the Mid-360 datasheet's
+#                    ranging precision spec (~2 cm typical).
+#   - beam_angle:    beam divergence in radians (Mid-360 spec ~0.28deg x 0.03deg;
+#                    0.28deg =~ 0.0049 rad, used below as a rough placeholder --
+#                    needs to be re-derived/verified, do not trust it as-is).
+#   - beam_constant: carried over from Velodyne/RSLidar (config/sensor_processors/
+#                    velodyne_HDL-32E.yaml, RSLidar-32.yaml) as a starting point.
+#
+# Validate empirically: point the sensor at a flat wall/floor at a known
+# range and compare the resulting rawMap_ "variance" layer against the
+# expected measurement scatter, the same way the Velodyne/RSLidar constants
+# were presumably tuned.
+#
+# Also note: LaserSensorProcessor has no per-sensor range-cutoff filter
+# (unlike StructuredLightSensorProcessor's cutoff_min/max_depth) -- if the
+# Mid-360's near blind zone (~0.1-0.2 m) or far-range noise needs clipping
+# and isn't already handled upstream (e.g. by whatever produces
+# /livox/filtered), that requires a small code addition, not a config change.
+sensor_processor:
+  type: laser
+  min_radius: 0.02
+  beam_angle: 0.0049
+  beam_constant: 0.0015

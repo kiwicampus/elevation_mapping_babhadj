@@ -25,7 +25,7 @@
 #include <geometry_msgs/msg/transform_stamped.h>
 #include <geometry_msgs/msg/point_stamped.h>
 #include <tf2/LinearMath/Transform.h>
-#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
 #include "elevation_mapping/ElevationMap.hpp"
 #include "elevation_mapping/ElevationMapping.hpp"

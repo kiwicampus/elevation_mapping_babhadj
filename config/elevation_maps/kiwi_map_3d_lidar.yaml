@@ -1,10 +1,12 @@
 /**:
   ros__parameters:
-    # Default map params (no Livox). Livox bots use kiwi_map_3d_lidar.yaml when
-    # NODE_LIVOX_LIDAR=1 (see elevation_mapping.launch.py).
-    # Per-input height gating lives under <input>.sensor_processor in robots/*.yaml.
+    # Map params for Livox bots (NODE_LIVOX_LIDAR=1). Same defaults as kiwi_map.yaml
+    # for now — diverge here if lidar needs a larger window / different fusion.
+    # Selected by elevation_mapping.launch.py unless EM_CPU_MAP_FILE overrides.
     min_update_rate: 5.0
     time_tolerance: 0.5
+    # Per-input height gating lives under <input>.sensor_processor in
+    # robots/kiwi_3d_lidar.yaml (e.g. livox.sensor_processor.ignore_points_above).
     robot_motion_map_update/covariance_scale: 0.0
     robot_motion_map_update/covariance_scale_translation_x: 0.0
     robot_motion_map_update/covariance_scale_translation_y: 0.0
